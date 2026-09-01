@@ -23,7 +23,7 @@ A Manifest V3 browser extension that shows a draggable global floating ball over
 - **行情详情卡**：点击悬浮球展开，展示今开 / 昨收 / 最高 / 最低 / 成交量 / 成交额 / 换手率 / 振幅 / 市盈率 / 市净率 / 总市值 / 流通市值 / 涨停 / 跌停，以及实时迷你走势
 - **双模式预测参考**：基于近 80 个交易日历史统计（均线 MA5/10/20、RSI14、波动率、上涨天数占比）给出方向、次日预测区间与上涨概率；支持「次日」模式（日K统计 + 回测校准）与「实时」模式（分时K线 + 盘中量价），并跨会话追踪预测命中率
 - **主力资金流与龙虎榜信号**（仅A股）：主力净流入/流出、5 日累计、连续流入/流出天数、强度等级；龙虎榜近 5 条上榜记录（买卖金额、上榜原因）
-- **热榜资讯参考**：聚合热榜数据，按股票名称/代码匹配相关资讯，并对标题做积极/消极情绪分析
+- **个股资讯参考**：多源聚合 —— 东方财富个股新闻检索（财联社/证券时报/中国证券报等）+ 新浪财经7x24快讯 + 雪球/微博/百度热榜，按股票名称/代码匹配并做积极/消极情绪分析
 - **配置实时同步**：配置修改后所有已打开网页即时生效
 - **低权限**：仅申请 `storage` 权限
 
@@ -65,7 +65,7 @@ A Manifest V3 browser extension that shows a draggable global floating ball over
 
 - 行情数据：腾讯行情（主）；A股失败自动降级东方财富（备用）
 - 主力资金流 / 龙虎榜：东方财富（仅A股）
-- 热榜资讯：moyuhot.com、nowhots.com
+- 个股资讯：东方财富新闻搜索（search-api-web.eastmoney.com）、新浪财经7x24（zhibo.sina.com.cn）、热榜（moyuhot.com、nowhots.com）
 - 全部为公开免费接口，仅供展示；接口偶有波动，扩展已做双源切换与重试
 - 配置保存在浏览器扩展存储（`chrome.storage.local`）中，**卸载扩展后配置会清除**，不上传任何数据
 
@@ -113,7 +113,7 @@ Quotes come from Tencent (primary), with automatic fallback to Eastmoney (backup
 - **Detail quote card**: click the ball to expand — open / prev close / high / low / volume / turnover / turnover rate / amplitude / P/E / P/B / total market cap / float market cap / limit-up / limit-down prices, plus a real-time mini chart
 - **Dual-mode prediction reference**: based on statistics over the last 80 trading days (MA5/10/20, RSI14, volatility, ratio of up days) it estimates direction, a next-day prediction range, and the probability of an up move. Two modes: **Next-day** (daily-K stats + backtest calibration) and **Real-time** (intraday tick K-line + volume-price). Prediction hit rate is tracked across sessions
 - **Main capital flow & Dragon-Tiger List signals** (A-shares only): main net inflow/outflow, 5-day cumulative flow, consecutive inflow/outflow streak, and strength level; up to 5 recent Dragon-Tiger List appearances (buy/sell amounts and reasons)
-- **Hot-list news reference**: aggregates trending news, matches items to your stocks by name/code, and scores headline sentiment (positive / negative)
+- **Stock news reference**: multi-source aggregation — Eastmoney per-stock news search (Cailianshe / Securities Times / China Securities Journal, etc.) + Sina Finance 7x24 flash news + Xueqiu/Weibo/Baidu hot lists, matched by stock name/code with positive/negative sentiment scoring
 - **Live config sync**: changes apply instantly to every already-open page
 - **Minimal permissions**: only `storage` is requested
 
@@ -155,7 +155,7 @@ The prediction is based on historical price statistics: MA alignment for directi
 
 - Quotes: Tencent (primary); automatic fallback to Eastmoney (backup) for A-shares
 - Main capital flow / Dragon-Tiger List: Eastmoney (A-shares only)
-- Hot-list news: moyuhot.com, nowhots.com
+- Stock news: Eastmoney news search (search-api-web.eastmoney.com), Sina Finance 7x24 (zhibo.sina.com.cn), hot lists (moyuhot.com, nowhots.com)
 - All public free APIs, display purposes only; the extension handles source switching and retries on API hiccups
 - Your config is stored in `chrome.storage.local` and is **cleared when the extension is uninstalled**. No data is uploaded anywhere
 

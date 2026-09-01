@@ -10,6 +10,8 @@
     "https://push2his.eastmoney.com/*",
     "https://datacenter-web.eastmoney.com/*",
     "https://searchapi.eastmoney.com/*",
+    "https://search-api-web.eastmoney.com/*",
+    "https://zhibo.sina.com.cn/*",
     "https://moyuhot.com/*",
     "https://api.nowhots.com/*",
     "https://nowhots.com/*"

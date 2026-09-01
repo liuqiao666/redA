@@ -276,7 +276,7 @@ root.innerHTML += `
         <div class="nhead"><b>相关资讯</b><span class="tg neu" id="nTag">--</span><span class="sub" id="nSub">--</span><button class="nref" id="nRef">↻ 刷新</button></div>
         <div class="nlist" id="nList"></div>
       </div>
-      <div class="note">基于历史统计与公开热榜的简易参考，不构成投资建议</div>
+      <div class="note">基于历史统计与公开资讯的简易参考，不构成投资建议</div>
     </div>
   </div>
   <div class="srcRow" id="srcRow" style="display:none"></div>
@@ -921,12 +921,12 @@ function renderNews(n) {
   var up = fmtClock(n.at);
   nSub.textContent = n.total
     ? ('共 ' + n.total + ' 条 · 利好 ' + n.pos + ' / 利空 ' + n.neg + ' · 更新 ' + up)
-    : ('暂无相关热榜内容 · 更新 ' + up);
+    : ('暂无相关资讯 · 更新 ' + up);
   nList.innerHTML = '';
   if (!n.total) {
     var emp = document.createElement('div');
     emp.className = 'nemp';
-    emp.textContent = '雪球 / 微博 / 百度等热榜暂无该股相关内容';
+    emp.textContent = '暂无该股相关资讯，可稍后刷新重试';
     nList.appendChild(emp);
     return;
   }

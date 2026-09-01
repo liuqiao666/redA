@@ -944,33 +944,103 @@ function fetchNow(platform) {
       });
     });
 }
+/* 东方财富新闻搜索：按个股关键词返回真实资讯（标题/来源/时间/摘要/链接） */
+var EM_NEWS_SEARCH = 'https://search-api-web.eastmoney.com/search/jsonp';
+function fetchEMNews(keyword, size) {
+  var param = {
+    uid: '', keyword: keyword, type: ['cmsArticleWebOld'],
+    client: 'web', clientType: 'web', clientVersion: 'curr',
+    param: { cmsArticleWebOld: { searchScope: 'default', sort: 'default', pageIndex: 1, pageSize: size || 8, preTag: '', postTag: '' } }
+  };
+  var url = EM_NEWS_SEARCH + '?cb=cb&param=' + encodeURIComponent(JSON.stringify(param));
+  return fetch(url, { cache: 'no-store' })
+    .then(function (r) { return r.text(); })
+    .then(function (txt) {
+      var i = txt.indexOf('('), j = txt.lastIndexOf(')');
+      if (i < 0 || j <= i) return [];
+      var json = JSON.parse(txt.slice(i + 1, j));
+      var list = (json && json.result && Array.isArray(json.result.cmsArticleWebOld)) ? json.result.cmsArticleWebOld : [];
+      return list.map(function (it) {
+        return {
+          title: String(it.title || '').replace(/<\/?em>/g, ''),
+          url: it.url || '',
+          platform: it.mediaName || '东方财富',
+          date: it.date || '',
+          summary: String(it.content || '').replace(/<\/?em>/g, '')
+        };
+      }).filter(function (x) { return x.title; });
+    });
+}
+/* 新浪财经 7x24 快讯：全市场滚动快讯，按个股关键词过滤 */
+var SINA_LIVE = 'https://zhibo.sina.com.cn/api/zhibo/feed';
+function fetchSinaLive(keyword, size) {
+  var url = SINA_LIVE + '?page=1&page_size=' + (size || 40) +
+    '&zhibo_id=152&tag_id=0&dire=f&dpc=1&_=' + Date.now();
+  return fetch(url, { cache: 'no-store' })
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      var items = (j && j.result && j.result.data && j.result.data.feed && Array.isArray(j.result.data.feed.list))
+        ? j.result.data.feed.list : [];
+      return items.map(function (it) {
+        var txt = String(it.rich_text || '').trim();
+        var title = txt;
+        if (txt.charAt(0) === '【') {
+          var e = txt.indexOf('】');
+          if (e > 0) title = txt.slice(0, e + 1);
+        }
+        return { title: title, url: it.docurl || '', platform: '新浪7x24', date: it.create_time || '', summary: txt };
+      }).filter(function (x) { return x.title; });
+    });
+}
 function fetchHotNews(cfg, force) {
   var key = cfg.market + ':' + cfg.code;
   var cached = NEWS_CACHE[key];
   if (!force && cached && Date.now() - cached.t < NEWS_TTL) return Promise.resolve(cached.data);
   var name = cfg.name || '';
   var code = String(cfg.code || '');
-  var sources = [
+  var hotSources = [
     fetchMoyu('xueqiu'), fetchMoyu('weibo'), fetchMoyu('baidu'),
     fetchNow('weibo'), fetchNow('baidu')
   ];
-  return Promise.all(sources.map(function (p) { return p.catch(function () { return []; }); }))
-    .then(function (lists) {
+  var emNews = name ? fetchEMNews(name, 8) : Promise.resolve([]);
+  var sina = name ? fetchSinaLive(name, 40).then(function (list) {
+    return list.filter(function (it) { return newsMatch(it.title + it.summary, name, code); });
+  }) : Promise.resolve([]);
+  return Promise.all([
+    Promise.all(hotSources.map(function (p) { return p.catch(function () { return []; }); })),
+    emNews.catch(function () { return []; }),
+    sina.catch(function () { return []; })
+  ])
+    .then(function (res) {
+      var hotLists = res[0], emList = res[1], sinaList = res[2];
       var seen = {}, items = [];
-      lists.forEach(function (list) {
+      function push(title, url, platform, date, tagScore) {
+        if (!title || seen[title]) return;
+        seen[title] = 1;
+        var s = tagScore || scoreSentiment(title);
+        items.push({ title: title, url: url || '', platform: platform || '资讯', date: date || '', tag: s.tag, score: s.score });
+      }
+      hotLists.forEach(function (list) {
         list.forEach(function (it) {
           if (!newsMatch(it.title, name, code)) return;
-          var s = scoreSentiment(it.title);
-          if (seen[it.title]) return;
-          seen[it.title] = 1;
-          items.push({
-            title: it.title, url: it.url, platform: it.platform,
-            tag: s.tag, score: s.score
-          });
+          push(it.title, it.url, it.platform, '');
         });
       });
-      items.sort(function (a, b) { return Math.abs(b.score) - Math.abs(a.score) || b.title.length - a.title.length; });
-      items = items.slice(0, 6);
+      /* 东财文章已按关键词检索，直接采用；标题+摘要做情绪分 */
+      emList.forEach(function (it) {
+        push(it.title, it.url, it.platform, it.date, scoreSentiment(it.title + ' ' + (it.summary || '')));
+      });
+      sinaList.forEach(function (it) {
+        push(it.title, it.url, it.platform, it.date);
+      });
+      items.sort(function (a, b) {
+        var sa = Math.abs(a.score), sb = Math.abs(b.score);
+        if (sa !== sb) return sb - sa;
+        var da = a.date ? new Date(a.date.replace(/-/g, '/')).getTime() : 0;
+        var db = b.date ? new Date(b.date.replace(/-/g, '/')).getTime() : 0;
+        return db - da;
+      });
+      items = items.slice(0, 8);
       var pos = items.filter(function (x) { return x.tag === 'pos'; }).length;
       var neg = items.filter(function (x) { return x.tag === 'neg'; }).length;
       var neu = items.length - pos - neg;
