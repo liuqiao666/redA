@@ -286,6 +286,11 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
       .catch(function (e) { sendResponse({ ok: false, error: String((e && e.message) || e) }); });
     return true;
   }
+  if (msg.type === 'openOptions') {
+    try { chrome.runtime.openOptionsPage(); } catch (e) { }
+    sendResponse({ ok: true });
+    return true;
+  }
   if (msg.type === 'larkTest') {
     loadAlertCfg(function (cfg) {
       if (!cfg.larkUrl) {

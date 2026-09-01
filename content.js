@@ -1098,9 +1098,9 @@ btnHide.addEventListener('click', function () {
 });
 btnNow.addEventListener('click', function () { refresh(); });
 btnOpts.addEventListener('click', function () {
+  /* openOptionsPage 仅扩展页面可用，content script 需转发给后台执行 */
   try {
-    if (chrome.runtime.openOptionsPage) chrome.runtime.openOptionsPage();
-    else window.open(chrome.runtime.getURL('options.html'));
+    chrome.runtime.sendMessage({ type: 'openOptions' });
   } catch (e) { }
 });
 btnPause.addEventListener('click', function () {
