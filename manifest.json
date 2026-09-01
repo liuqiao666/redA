@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "实时股价",
+  "version": "3.4.0",
+  "description": "全局实时股价悬浮球，可自行配置多只 A股/港股/美股/ETF/LOF 并随时切换，含实时/次日双模式预测、主力资金流与龙虎榜信号、热榜资讯参考。拖动移动，点击展开行情详情。数据源：腾讯行情（备用：东方财富）。",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://*.gtimg.cn/*",
+    "https://push2.eastmoney.com/*",
+    "https://push2his.eastmoney.com/*",
+    "https://datacenter-web.eastmoney.com/*",
+    "https://moyuhot.com/*",
+    "https://api.nowhots.com/*",
+    "https://nowhots.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_title": "实时股价 · 设置与切换",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

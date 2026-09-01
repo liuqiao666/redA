@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>实时股价 · 设置</title>
+<style>
+:root{--blue:#2563eb;--blueDeep:#1d4ed8;--blueLight:#eff6ff;--ink:#0f172a;--ink2:#475569;--ink3:#94a3b8;--line:#e2e8f0;--lineSoft:#eef2f7;--up:#e5484d;--down:#10a37f;--num:'DIN Alternate','Bahnschrift Condensed','Rajdhani',sans-serif}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',sans-serif;color:var(--ink);background:#f8fafc;min-height:100vh}
+.wrap{max-width:680px;margin:0 auto;padding:32px 24px 60px}
+.hd{display:flex;align-items:center;gap:14px;margin-bottom:8px}
+.logo{width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,#2563eb,#3b82f6);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;box-shadow:0 6px 18px rgba(37,99,235,.32)}
+.hd h1{font-size:20px;font-weight:700;letter-spacing:.04em}
+.hd .sub{font-size:11px;color:var(--ink3);letter-spacing:.1em;margin-top:3px}
+.cur{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:20px 0;box-shadow:0 2px 10px rgba(15,23,42,.05)}
+.cur .lb{font-size:11px;color:var(--ink3);letter-spacing:.16em}
+.cur .nm{font-size:15px;font-weight:700}
+.cur .mk{font-size:10px;color:var(--blue);border:1px solid #bfdbfe;border-radius:4px;padding:2px 7px;background:#fff}
+.cur .cd{font-family:var(--num);font-size:12px;color:var(--ink3)}
+.cur .px{margin-left:auto;font-family:var(--num);font-size:19px;font-weight:700;font-variant-numeric:tabular-nums}
+.cur .px.up{color:var(--up)}.cur .px.down{color:var(--down)}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:0 2px 10px rgba(15,23,42,.05)}
+.card h2{font-size:13px;font-weight:700;letter-spacing:.1em;color:var(--blue);margin-bottom:12px}
+.mylist{margin-bottom:14px;border:1px solid var(--lineSoft);border-radius:10px;overflow:hidden}
+.mrow{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--lineSoft);cursor:pointer;transition:background .15s}
+.mrow:last-child{border-bottom:none}
+.mrow:hover{background:#f8fafc}
+.mrow.on{background:var(--blueLight)}
+.mrow .mk{font-size:10px;color:var(--blue);border:1px solid #bfdbfe;border-radius:4px;padding:1px 6px;flex-shrink:0;background:#fff}
+.mrow .nm{font-size:13.5px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mrow .cd{font-family:var(--num);font-size:11px;color:var(--ink3);flex-shrink:0}
+.mrow .act{font-size:10px;color:var(--blue);font-weight:600;flex-shrink:0}
+.mrow .ops{display:flex;gap:6px;flex-shrink:0}
+.mrow .ops button{font-size:10.5px;padding:3px 9px;border-radius:6px;border:1px solid var(--line);background:#fff;color:var(--ink2);cursor:pointer;transition:all .15s}
+.mrow .ops button:hover{color:var(--blue);border-color:var(--blue)}
+.mrow .ops button.del:hover{color:var(--up);border-color:var(--up)}
+.emp{padding:22px 0;text-align:center;font-size:12px;color:var(--ink3)}
+.seek{display:flex;gap:8px}
+.seek input{flex:1;padding:10px 13px;border-radius:9px;outline:none;font-size:13.5px;color:var(--ink);background:#f8fafc;border:1px solid var(--line);font-family:inherit;transition:border-color .2s,box-shadow .2s}
+.seek input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.12);background:#fff}
+.seek button{padding:0 20px;border-radius:9px;border:1px solid var(--blue);background:var(--blue);color:#fff;font-size:12.5px;letter-spacing:.12em;cursor:pointer;transition:background .2s}
+.seek button:hover{background:var(--blueDeep)}
+.switch{position:relative;width:46px;height:26px;flex-shrink:0}
+.switch input{opacity:0;width:0;height:0}
+.slider{position:absolute;inset:0;border-radius:99px;background:#cbd5e1;transition:background .2s;cursor:pointer}
+.slider::before{content:'';position:absolute;width:20px;height:20px;border-radius:50%;background:#fff;left:3px;top:3px;transition:transform .2s;box-shadow:0 1px 3px rgba(15,23,42,.28)}
+.switch input:checked + .slider{background:var(--blue)}
+.switch input:checked + .slider::before{transform:translateX(20px)}
+.visrow{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.visrow .vnm{font-size:13.5px;font-weight:600}
+.visrow .vsub{font-size:11px;color:var(--ink3);margin-top:3px}
+.tip{font-size:11px;color:var(--ink3);margin-top:9px}
+.list{margin-top:14px;max-height:260px;overflow-y:auto;border:1px solid var(--lineSoft);border-radius:10px;padding:4px}
+.list::-webkit-scrollbar{width:5px}
+.list::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
+.item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;cursor:pointer;border:1px solid transparent}
+.item:hover{background:#f8fafc;border-color:var(--line)}
+.item .mk{font-size:10px;color:var(--blue);border:1px solid #bfdbfe;border-radius:4px;padding:1px 6px;flex-shrink:0}
+.item .nm{font-size:13.5px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .cd{font-family:var(--num);font-size:11px;color:var(--ink3);flex-shrink:0}
+.item .tp{font-size:10px;color:var(--ink2);border:1px solid var(--line);border-radius:4px;padding:1px 6px;flex-shrink:0}
+.item .add{font-size:10px;color:var(--blue);font-weight:600;flex-shrink:0}
+.msg{display:none;margin-top:14px;padding:10px 14px;border-radius:9px;font-size:12px}
+.msg.ok{display:block;color:#047857;background:#ecfdf5;border:1px solid #a7f3d0}
+.msg.err{display:block;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca}
+.notes{margin-top:20px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:0 2px 10px rgba(15,23,42,.05)}
+.notes h2{font-size:13px;font-weight:700;letter-spacing:.1em;color:var(--blue);margin-bottom:10px}
+.notes ul{list-style:none}
+.notes li{font-size:12px;color:var(--ink2);line-height:1.9;padding-left:16px;position:relative}
+.notes li::before{content:'';position:absolute;left:2px;top:10px;width:5px;height:5px;border-radius:50%;background:var(--blue);opacity:.55}
+.notes b{color:var(--ink);font-weight:600}
+.notes .hl{color:var(--blue)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hd">
+    <div class="logo">行情</div>
+    <div>
+      <h1>实时股价 · 设置</h1>
+      <div class="sub">全局悬浮球 · 多股票 · 实时行情 + 统计预测</div>
+    </div>
+  </div>
+
+  <div class="cur">
+    <span class="lb">当前</span>
+    <span class="nm" id="curName">--</span>
+    <span class="mk" id="curMk">--</span>
+    <span class="cd" id="curCode">--</span>
+    <span class="px" id="curPx">--</span>
+  </div>
+
+  <div class="card">
+    <h2>悬浮球显示</h2>
+    <div class="visrow">
+      <div>
+        <div class="vnm">页面悬浮球</div>
+        <div class="vsub" id="visSub">--</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="visToggle">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="tip">关闭后，所有网页上的悬浮球将立即隐藏；您可随时回到本页面重新开启。</div>
+  </div>
+
+  <div class="card">
+    <h2>已配置股票</h2>
+    <div class="mylist" id="mylist">
+      <div class="emp" id="myEmp">尚未配置股票，请在下方搜索添加</div>
+    </div>
+    <h2>搜索并添加股票</h2>
+    <div class="seek">
+      <input id="kw" type="text" placeholder="输入名称或代码，如：茅台、002895、hk00700、usAAPL" autocomplete="off">
+      <button id="btn">搜索</button>
+    </div>
+    <div class="tip">支持名称 / 代码 / 拼音首字母搜索；点击候选添加到列表。点击列表项可切换当前展示，可随时移除。</div>
+    <div class="list" id="list"></div>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <div class="notes">
+    <h2>使用说明</h2>
+    <ul>
+      <li><b>多股票配置：</b>所有股票均由您自行添加，无任何预设股票；添加后可在悬浮球行情卡顶部的标签栏一键切换。</li>
+      <li><b>悬浮球操作：</b>拖动移动位置，单击展开行情卡，Esc 收起。点击悬浮球右上角 × 或行情卡内「隐藏」可关闭悬浮球；在本页「悬浮球显示」中可随时重新开启。</li>
+      <li><b>快速切换：</b>点击浏览器工具栏的扩展图标，在弹窗中搜索添加 / 切换 / 移除。</li>
+      <li><b>行情卡内的「设置」按钮</b>也会打开本页面。</li>
+      <li><b>行情卡内的「智能预测」</b>：分「实时 / 次日 / 资金 / 资讯」四栏。实时预测基于分时K线（精确均价、30分钟动量、量能、日内位置）与大盘指数评估剩余交易空间与方向；次日预测基于近 120 日K线的均线/MACD/KDJ/BOLL/ATR/OBV/ADX/CCI 多指标综合打分，并按滚动回测校准概率、记录历史命中率；资金栏展示主力资金流（含超大/大/中/小单、近5日累计、连续流向）与龙虎榜上榜记录（仅A股）；资讯栏从摸鱼热榜与即时热点抓取相关热榜，按关键词做利好/利空情绪标注。仅供技术参考，不构成投资建议。</li>
+      <li><b>支持市场：</b>A股（沪深京）、港股、美股、场内ETF/LOF。数据源：<span class="hl">腾讯行情</span>（A股失败时自动降级<span class="hl">东方财富</span>）。</li>
+      <li><b>刷新频率：</b>交易时段每 3 秒，非交易时段每 15 秒；自动识别开闭市状态。</li>
+      <li>行情仅供展示，不构成投资建议；特殊页面（chrome://、应用商店等）出于浏览器安全限制不显示悬浮球。</li>
+    </ul>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="options.js"></script>
+</body>
+</html>
