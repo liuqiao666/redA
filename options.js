@@ -13,6 +13,18 @@ var curCode = document.getElementById('curCode');
 var curPx = document.getElementById('curPx');
 var visToggle = document.getElementById('visToggle');
 var visSub = document.getElementById('visSub');
+var alertToggle = document.getElementById('alertToggle');
+var alertSub = document.getElementById('alertSub');
+var alertRatioUp = document.getElementById('alertRatioUp');
+var alertRatioDown = document.getElementById('alertRatioDown');
+var alertPct = document.getElementById('alertPct');
+var alertCd = document.getElementById('alertCd');
+var larkToggle = document.getElementById('larkToggle');
+var larkSub = document.getElementById('larkSub');
+var larkUrl = document.getElementById('larkUrl');
+var larkTest = document.getElementById('larkTest');
+
+var ALERT_DEFAULTS = { on: true, ratioUp: 1.8, ratioDown: 0.5, pct: 3, cd: 120, larkOn: false, larkUrl: '' };
 
 var stocks = [];
 var activeIdx = 0;
@@ -184,6 +196,96 @@ visToggle.addEventListener('change', function () {
   });
 });
 
+/* ---- 异动提醒配置 ---- */
+function renderAlert() {
+  chrome.storage.local.get('chhAlert', function (o) {
+    var cfg = Object.assign({}, ALERT_DEFAULTS, (o && o.chhAlert) || {});
+    alertToggle.checked = !!cfg.on;
+    alertSub.textContent = cfg.on ? '当前：已开启（交易时段每分钟检测）' : '当前：已关闭';
+    alertRatioUp.value = cfg.ratioUp;
+    alertRatioDown.value = cfg.ratioDown;
+    alertPct.value = cfg.pct;
+    alertCd.value = cfg.cd;
+    larkToggle.checked = !!cfg.larkOn;
+    larkUrl.value = cfg.larkUrl || '';
+    larkSub.textContent = (cfg.larkOn && cfg.larkUrl)
+      ? '当前：已开启（信号命中时同步推送飞书）'
+      : '当前：未开启';
+    if (cfg.larkUrl) {
+      var m = String(cfg.larkUrl).match(/hook\/(.{6})/);
+      larkUrl.placeholder = m ? '已配置 Webhook（' + m[1] + '…）' : '已配置 Webhook';
+    } else {
+      larkUrl.placeholder = 'https://open.feishu.cn/open-apis/bot/v2/hook/xxxx';
+    }
+  });
+}
+function saveAlert(part, cb) {
+  chrome.storage.local.get('chhAlert', function (o) {
+    var cfg = Object.assign({}, ALERT_DEFAULTS, (o && o.chhAlert) || {}, part);
+    chrome.storage.local.set({ chhAlert: cfg }, cb || function () {});
+  });
+}
+alertToggle.addEventListener('change', function () {
+  saveAlert({ on: alertToggle.checked }, function () {
+    showMsg('ok', alertToggle.checked ? '异动提醒已开启' : '异动提醒已关闭');
+  });
+});
+alertRatioUp.addEventListener('change', function () {
+  var v = parseFloat(alertRatioUp.value);
+  if (!isFinite(v) || v < 1) { showMsg('err', '放量倍率需 ≥ 1'); renderAlert(); return; }
+  saveAlert({ ratioUp: v }, function () { showMsg('ok', '放量倍率已更新'); });
+});
+alertRatioDown.addEventListener('change', function () {
+  var v = parseFloat(alertRatioDown.value);
+  if (!isFinite(v) || v <= 0 || v >= 1) { showMsg('err', '缩量倍率需在 0~1 之间'); renderAlert(); return; }
+  saveAlert({ ratioDown: v }, function () { showMsg('ok', '缩量倍率已更新'); });
+});
+alertPct.addEventListener('change', function () {
+  var v = parseFloat(alertPct.value);
+  if (!isFinite(v) || v <= 0) { showMsg('err', '涨跌幅阈值需大于 0'); renderAlert(); return; }
+  saveAlert({ pct: v }, function () { showMsg('ok', '涨跌幅阈值已更新'); });
+});
+alertCd.addEventListener('change', function () {
+  var v = parseFloat(alertCd.value);
+  if (!isFinite(v) || v < 10) { showMsg('err', '冷却时间需 ≥ 10 分钟'); renderAlert(); return; }
+  saveAlert({ cd: v }, function () { showMsg('ok', '冷却时间已更新'); });
+});
+
+/* ---- 飞书推送配置 ---- */
+larkToggle.addEventListener('change', function () {
+  saveAlert({ larkOn: larkToggle.checked }, function () {
+    showMsg('ok', larkToggle.checked ? '飞书推送已开启' : '飞书推送已关闭');
+  });
+});
+larkUrl.addEventListener('change', function () {
+  var v = larkUrl.value.trim();
+  if (v && v.indexOf('open.feishu.cn/open-apis/bot/v2/hook/') < 0) {
+    showMsg('err', 'Webhook 地址格式不正确，请粘贴飞书群机器人的完整 Webhook 地址');
+    return;
+  }
+  saveAlert({ larkUrl: v }, function () {
+    showMsg('ok', v ? '飞书 Webhook 已保存' : '已清空飞书 Webhook');
+    renderAlert();
+  });
+});
+larkTest.addEventListener('click', function () {
+  chrome.storage.local.get('chhAlert', function (o) {
+    var cfg = Object.assign({}, ALERT_DEFAULTS, (o && o.chhAlert) || {});
+    if (!cfg.larkUrl) { showMsg('err', '请先填写并保存飞书 Webhook 地址'); return; }
+    larkTest.disabled = true;
+    larkTest.textContent = '发送中…';
+    chrome.runtime.sendMessage({ type: 'larkTest' }, function (resp) {
+      larkTest.disabled = false;
+      larkTest.textContent = '发送测试消息';
+      if (chrome.runtime.lastError || !resp || !resp.ok) {
+        showMsg('err', '推送失败：' + ((resp && resp.error) || chrome.runtime.lastError || '未知错误'));
+      } else {
+        showMsg('ok', '测试消息已发送，请查看飞书群');
+      }
+    });
+  });
+});
+
 function reload() {
   loadStocks(function (s) {
     stocks = s;
@@ -199,3 +301,4 @@ function reload() {
 
 reload();
 renderVis();
+renderAlert();

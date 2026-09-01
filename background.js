@@ -286,6 +286,25 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
       .catch(function (e) { sendResponse({ ok: false, error: String((e && e.message) || e) }); });
     return true;
   }
+  if (msg.type === 'larkTest') {
+    loadAlertCfg(function (cfg) {
+      if (!cfg.larkUrl) {
+        sendResponse({ ok: false, error: '未配置飞书 Webhook 地址' });
+        return;
+      }
+      var card = buildLarkCard(
+        { market: 'sh', code: '000001', name: '测试股票' },
+        { price: 10.25, pct: 3.5 },
+        1.9, 'upVol',
+        { nextLow: 10.10, nextHigh: 10.60, probUp: 0.68 },
+        '实时股价悬浮球 · 异动提醒测试消息\n（信号命中时将自动推送，冷却 ' + cfg.cd + ' 分钟）'
+      );
+      pushLark(cfg.larkUrl, card)
+        .then(function () { sendResponse({ ok: true }); })
+        .catch(function (e) { sendResponse({ ok: false, error: String((e && e.message) || e) }); });
+    });
+    return true;
+  }
 });
 
 /* ================= 预测：技术指标库 ================= */
@@ -1055,3 +1074,197 @@ function fetchHotNews(cfg, force) {
       return data;
     });
 }
+
+/* ================= 异动提醒：量价信号检测 + 浏览器通知 ================= */
+var ALERT_DEFAULTS = { on: true, ratioUp: 1.8, ratioDown: 0.5, pct: 3, cd: 120, larkOn: false, larkUrl: '' };
+var SIG_INFO = {
+  upVol: '放量上涨', downVol: '放量下跌',
+  upShrink: '缩量上涨', downShrink: '缩量下跌'
+};
+function loadAlertCfg(cb) {
+  chrome.storage.local.get('chhAlert', function (o) {
+    cb(Object.assign({}, ALERT_DEFAULTS, (o && o.chhAlert) || {}));
+  });
+}
+function saveAlertCfg(cfg, cb) {
+  chrome.storage.local.set({ chhAlert: cfg }, cb || function () {});
+}
+
+/* 盘中进度（把当前成交量折算为全天预估量）：返回 0~1，未开盘 0，已收盘 1 */
+function sessionProgress(market) {
+  var now = new Date();
+  var d = now.getDay();
+  if (d === 0 || d === 6) return 1;
+  var m = now.getHours() * 60 + now.getMinutes();
+  function span(am0, am1, pm0, pm1) {
+    var total = (am1 - am0) + (pm1 - pm0);
+    if (m < am0) return 0;
+    if (m <= am1) return (m - am0) / total;
+    if (m < pm0) return (am1 - am0) / total;
+    if (m <= pm1) return ((am1 - am0) + (m - pm0)) / total;
+    return 1;
+  }
+  if (market === 'hk') return span(9 * 60 + 30, 12 * 60, 13 * 60, 16 * 60);
+  if (market === 'sg') return span(9 * 60, 11 * 60 + 30, 13 * 60 + 30, 15 * 60 + 30);
+  if (market === 'us') {
+    if (m >= 21 * 60 + 30) return (m - (21 * 60 + 30)) / 390;   /* 北京时间 21:30~24:00 */
+    if (m < 4 * 60) return ((24 * 60 - (21 * 60 + 30)) + m) / 390; /* 0:00~4:00 */
+    return 1;
+  }
+  return span(9 * 60 + 30, 11 * 60 + 30, 13 * 60, 15 * 60);   /* A股沪深北 */
+}
+function isTradingTime(market) {
+  var p = sessionProgress(market);
+  return p > 0 && p < 1;
+}
+
+function checkAlerts() {
+  loadAlertCfg(function (cfg) {
+    if (!cfg || !cfg.on) return;
+    chrome.storage.local.get('chhStocks', function (o) {
+      var list = (o && Array.isArray(o.chhStocks)) ? o.chhStocks : [];
+      if (!list.length) return;
+      list.forEach(function (s) {
+        if (!s || !s.market || !s.code || !isTradingTime(s.market)) return;
+        checkOneAlert(s, cfg);
+      });
+    });
+  });
+}
+function checkOneAlert(s, cfg) {
+  var qp = (s.market === 'sg') ? fetchEM(s) : fetchTencent(s).catch(function () { return fetchEM(s); });
+  qp.then(function (q) {
+    if (!q || !isFinite(q.price) || !isFinite(q.pct)) return;
+    if (q.volHand == null || !(q.volHand > 0)) return;   /* 上金所现货无成交量，跳过 */
+    return fetchKline(s, 60).then(function (rows) {
+      if (rows.length < 6) return;
+      var avg5 = 0;
+      for (var i = rows.length - 6; i < rows.length - 1; i++) avg5 += (+rows[i][5] || 0);
+      avg5 /= 5;
+      if (!(avg5 > 0)) return;
+      var prog = sessionProgress(s.market);
+      var estVol = q.volHand / (prog > 0 ? prog : 1);
+      var ratio = estVol / avg5;
+      var sig = null;
+      if (q.pct >= cfg.pct && ratio >= cfg.ratioUp) sig = 'upVol';
+      else if (q.pct <= -cfg.pct && ratio >= cfg.ratioUp) sig = 'downVol';
+      else if (q.pct >= cfg.pct && ratio <= cfg.ratioDown) sig = 'upShrink';
+      else if (q.pct <= -cfg.pct && ratio <= cfg.ratioDown) sig = 'downShrink';
+      if (!sig) return;
+      var now = Date.now();
+      chrome.storage.local.get('chhAlertLog', function (o2) {
+        var log = (o2 && o2.chhAlertLog) || {};
+        var key = s.market + ':' + s.code;
+        var prev = log[key];
+        if (prev && prev.type === sig && now - prev.t < cfg.cd * 60000) return; /* 冷却去重 */
+        log[key] = { type: sig, t: now };
+        chrome.storage.local.set({ chhAlertLog: log });
+        predictDay(s, rows).then(function (p) {
+          sendAlert(s, q, ratio, sig, p, cfg);
+        }).catch(function () { sendAlert(s, q, ratio, sig, null, cfg); });
+      });
+    });
+  }).catch(function () {});
+}
+function sendAlert(s, q, ratio, sig, pred, cfg) {
+  var name = s.name || s.code;
+  var price = isFinite(q.price) ? q.price.toFixed(2) : '--';
+  var pctTxt = (q.pct >= 0 ? '+' : '') + q.pct.toFixed(2) + '%';
+  var lines = [
+    '【' + SIG_INFO[sig] + '】' + name,
+    '现价 ' + price + '（' + pctTxt + '）',
+    '量比 ' + ratio.toFixed(2) + '（相对前5日均量）'
+  ];
+  if (pred && isFinite(pred.nextLow) && isFinite(pred.probUp)) {
+    lines.push('次日预测 ' + pred.nextLow.toFixed(2) + '~' + pred.nextHigh.toFixed(2) +
+      ' · 上涨概率 ' + Math.round(pred.probUp * 100) + '%');
+  }
+  var text = lines.join('\n');
+  if (chrome.notifications) {
+    chrome.notifications.create('alert_' + s.market + '_' + s.code + '_' + sig + '_' + Date.now(), {
+      type: 'basic',
+      iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+      title: '【' + SIG_INFO[sig] + '】' + name,
+      message: text,
+      priority: 1
+    });
+  }
+  /* 飞书群机器人推送：interactive 卡片 */
+   if (cfg && cfg.larkOn && cfg.larkUrl) {
+     pushLark(cfg.larkUrl, buildLarkCard(s, q, ratio, sig, pred)).catch(function () { /* 静默 */ });
+   }
+ }
+var SIG_META = {
+  upVol: { name: '放量上涨', icon: '📈', tmpl: 'red' },
+  downVol: { name: '放量下跌', icon: '📉', tmpl: 'green' },
+  upShrink: { name: '缩量上涨', icon: '↗️', tmpl: 'red' },
+  downShrink: { name: '缩量下跌', icon: '↘️', tmpl: 'green' }
+};
+function marketShort(m) {
+  return { sh: '上交所', sz: '深交所', bj: '北交所', hk: '港股', us: '美股', sg: '上金所' }[m] || String(m || '').toUpperCase();
+}
+/* 飞书消息卡片（schema 2.0）：红涨绿跌主题 + 四栏数据 + 次日预测 */
+function buildLarkCard(s, q, ratio, sig, pred, note) {
+  var meta = SIG_META[sig] || { name: sig || '异动', icon: '⚡', tmpl: 'blue' };
+  var name = s.name || s.code;
+  var priceTxt = isFinite(q.price) ? q.price.toFixed(2) : '--';
+  var pctTxt = (isFinite(q.pct) ? (q.pct >= 0 ? '+' : '') + q.pct.toFixed(2) + '%' : '--');
+  var now = new Date();
+  var hm = (now.getHours() < 10 ? '0' + now.getHours() : now.getHours()) + ':' +
+    (now.getMinutes() < 10 ? '0' + now.getMinutes() : now.getMinutes());
+  var probTxt = (pred && isFinite(pred.probUp)) ? Math.round(pred.probUp * 100) + '%' : '--';
+  var rangeTxt = (pred && isFinite(pred.nextLow)) ? pred.nextLow.toFixed(2) + ' ~ ' + pred.nextHigh.toFixed(2) : '--';
+  var cols = [
+    { label: '现价', value: priceTxt },
+    { label: '涨跌幅', value: pctTxt },
+    { label: '量比', value: ratio.toFixed(2) },
+    { label: '上涨概率', value: probTxt }
+  ].map(function (f) {
+    return { tag: 'column', width: 'weighted', weight: 1, elements: [{ tag: 'markdown', content: '**' + f.label + '**\n' + f.value }] };
+  });
+  var elements = [
+    { tag: 'markdown', content: '**' + priceTxt + '**　' + pctTxt },
+    { tag: 'column_set', flex_mode: 'none', background_style: 'grey', horizontal_spacing: '8px', columns: cols },
+    { tag: 'markdown', content: '**次日预测**　' + rangeTxt + '　·　上涨概率 **' + probTxt + '**' }
+  ];
+  if (note) {
+    elements.push({ tag: 'hr' });
+    elements.push({ tag: 'note', elements: [{ tag: 'plain_text', content: note }] });
+  }
+  return {
+    schema: '2.0',
+    config: { wide_screen_mode: true },
+    header: {
+      title: { tag: 'plain_text', content: meta.icon + ' ' + meta.name + ' · ' + name },
+      subtitle: { tag: 'plain_text', content: txQueryCode(s) + ' · ' + marketShort(s.market) + ' · ' + hm },
+      template: meta.tmpl,
+      padding: '10px 12px 10px 12px'
+    },
+    body: { direction: 'vertical', padding: '12px 12px 12px 12px', elements: elements }
+  };
+}
+function pushLark(url, card) {
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ msg_type: 'interactive', card: card })
+  })
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      if (j && j.code !== 0) throw new Error((j && j.msg) || 'lark error');
+    });
+}
+chrome.notifications.onClicked.addListener(function (id) { chrome.notifications.clear(id); });
+
+/* 定时轮询：MV3 需用 chrome.alarms（setInterval 在 SW 休眠后不可靠） */
+function ensureAlertAlarm() {
+  if (!chrome.alarms) return;
+  chrome.alarms.get('alertCheck', function (a) {
+    if (!a) chrome.alarms.create('alertCheck', { periodInMinutes: 1 });
+  });
+}
+chrome.runtime.onInstalled.addListener(ensureAlertAlarm);
+chrome.runtime.onStartup.addListener(ensureAlertAlarm);
+chrome.alarms.onAlarm.addListener(function (al) {
+  if (al.name === 'alertCheck') checkAlerts();
+});

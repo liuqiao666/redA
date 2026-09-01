@@ -50,6 +50,13 @@ body{font-family:'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',sans-serif;c
 .visrow .vnm{font-size:13.5px;font-weight:600}
 .visrow .vsub{font-size:11px;color:var(--ink3);margin-top:3px}
 .tip{font-size:11px;color:var(--ink3);margin-top:9px}
+.alrow{display:flex;flex-wrap:wrap;gap:12px;margin-top:14px}
+.alrow label{flex:1;min-width:130px;font-size:11px;color:var(--ink3);letter-spacing:.06em;display:flex;flex-direction:column;gap:6px}
+.alrow input{padding:8px 10px;border-radius:8px;outline:none;font-size:13px;color:var(--ink);background:#f8fafc;border:1px solid var(--line);font-family:var(--num);transition:border-color .2s,box-shadow .2s}
+.alrow input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.12);background:#fff}
+.larkbox{margin-top:16px;border-top:1px dashed var(--line);padding-top:16px}
+.larktest{flex:0 0 auto;align-self:flex-end;padding:9px 16px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--ink2);font-size:12px;cursor:pointer;transition:all .15s}
+.larktest:hover{color:var(--blue);border-color:var(--blue)}
 .list{margin-top:14px;max-height:260px;overflow-y:auto;border:1px solid var(--lineSoft);border-radius:10px;padding:4px}
 .list::-webkit-scrollbar{width:5px}
 .list::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
@@ -103,6 +110,47 @@ body{font-family:'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',sans-serif;c
       </label>
     </div>
     <div class="tip">关闭后，所有网页上的悬浮球将立即隐藏；您可随时回到本页面重新开启。</div>
+  </div>
+
+  <div class="card">
+    <h2>异动提醒（浏览器通知）</h2>
+    <div class="visrow">
+      <div>
+        <div class="vnm">开启异动提醒</div>
+        <div class="vsub" id="alertSub">--</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="alertToggle">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="alrow">
+      <label>放量倍率<input type="number" id="alertRatioUp" step="0.1" min="1"></label>
+      <label>缩量倍率<input type="number" id="alertRatioDown" step="0.05" min="0.1" max="0.9"></label>
+      <label>涨跌幅阈值（%）<input type="number" id="alertPct" step="0.5" min="0.5"></label>
+      <label>冷却时间（分钟）<input type="number" id="alertCd" step="10" min="10"></label>
+    </div>
+    <div class="tip">交易时段每分钟自动检测自选股，出现「放量上涨 / 放量下跌 / 缩量上涨 / 缩量下跌」时发送浏览器通知并附次日预测（上金所现货无成交量数据，不参与检测）。需在浏览器的站点设置中允许本扩展发送通知。</div>
+
+    <div class="larkbox">
+      <div class="visrow">
+        <div>
+          <div class="vnm">飞书群机器人推送</div>
+          <div class="vsub" id="larkSub">--</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="larkToggle">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="alrow">
+        <label style="flex:3;min-width:260px">Webhook 地址
+          <input type="text" id="larkUrl" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxxx">
+        </label>
+        <button class="larktest" id="larkTest">发送测试消息</button>
+      </div>
+      <div class="tip">开启后，异动信号命中时将同步推送到该飞书群。获取方式：飞书群 → 设置 → 群机器人 → 添加自定义机器人 → 复制 Webhook 地址填入。保存后建议先点「发送测试消息」验证。</div>
+    </div>
   </div>
 
   <div class="card">
