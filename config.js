@@ -1,13 +1,13 @@
 /* 实时股价 · 配置公共逻辑（popup / options / content 共用存储结构） */
 'use strict';
 
-var MARKET_LABEL = { sz: '深交所', sh: '上交所', bj: '北交所', hk: '港股', us: '美股' };
+var MARKET_LABEL = { sz: '深交所', sh: '上交所', bj: '北交所', hk: '港股', us: '美股', sg: '上金所' };
 var TYPE_LABEL = {
   'GP-A': 'A股', 'GP': '股票', 'GP-H': '港股', 'GP-U': '美股',
   'ETF': 'ETF', 'LOF': 'LOF', 'ZS': '指数', 'QZ': '权证',
-  'KJ-HB': '货币基金', 'KJ-JJ': '基金'
+  'KJ-HB': '货币基金', 'KJ-JJ': '基金', '现货': '现货'
 };
-var STOCK_TYPES = { 'GP-A': 1, 'GP': 1, 'GP-H': 1, 'GP-U': 1, 'ETF': 1, 'LOF': 1, 'QZ': 1 };
+var STOCK_TYPES = { 'GP-A': 1, 'GP': 1, 'GP-H': 1, 'GP-U': 1, 'ETF': 1, 'LOF': 1, 'QZ': 1, '现货': 1 };
 
 /* 多股票列表存储：chhStocks = [{market, code, name}, ...]
  * 无内置默认股票，完全由用户自行添加配置。 */

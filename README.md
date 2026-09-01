@@ -19,7 +19,7 @@ A Manifest V3 browser extension that shows a draggable global floating ball over
 ### 功能特性
 
 - **全局悬浮球**：在所有网页之上显示可拖动的悬浮球，实时展示最新价、涨跌幅（红涨绿跌）；松手自动贴边停靠，位置跨网页记忆，首次使用有操作提示
-- **多股票支持**：A股（沪深北）/ 港股 / 美股 / 场内 ETF·LOF，行情卡顶部标签栏一键切换；完全无预设股票，全部由你自行搜索添加
+- **多股票支持**：A股（沪深北）/ 港股 / 美股 / 场内 ETF·LOF / 上金所现货（黄金9999 等），行情卡顶部标签栏一键切换；完全无预设股票，全部由你自行搜索添加
 - **行情详情卡**：点击悬浮球展开，展示今开 / 昨收 / 最高 / 最低 / 成交量 / 成交额 / 换手率 / 振幅 / 市盈率 / 市净率 / 总市值 / 流通市值 / 涨停 / 跌停，以及实时迷你走势
 - **双模式预测参考**：基于近 80 个交易日历史统计（均线 MA5/10/20、RSI14、波动率、上涨天数占比）给出方向、次日预测区间与上涨概率；支持「次日」模式（日K统计 + 回测校准）与「实时」模式（分时K线 + 盘中量价），并跨会话追踪预测命中率
 - **主力资金流与龙虎榜信号**（仅A股）：主力净流入/流出、5 日累计、连续流入/流出天数、强度等级；龙虎榜近 5 条上榜记录（买卖金额、上榜原因）
@@ -36,6 +36,7 @@ A Manifest V3 browser extension that shows a draggable global floating ball over
 | 港股 | `hk00700`（腾讯控股） | 前缀 `hk` |
 | 美股 | `usAAPL`（苹果）、`usTSLA`（特斯拉） | 前缀 `us` |
 | ETF/LOF | `510300`（沪深300ETF）、`159919`（沪深300ETF嘉实） | 直接输入 6 位代码 |
+| 上金所现货 | `AU9999`（黄金9999）、`AU9995`（黄金9995） | 搜「黄金」或「黄金999」即出 |
 
 ### 安装方法（Chrome / Edge）
 
@@ -108,7 +109,7 @@ Quotes come from Tencent (primary), with automatic fallback to Eastmoney (backup
 ### Features
 
 - **Global floating ball**: a draggable ball on top of every web page showing the latest price and change % (red up / green down). It snaps to the screen edge on release and remembers its position across pages; first-time users get a quick hint
-- **Multi-stock watchlist**: A-shares (Shanghai / Shenzhen / Beijing), HK stocks, US stocks, and exchange-traded ETFs/LOFs. Switch between them via the tab bar on the quote card — zero preset stocks, you configure everything
+- **Multi-stock watchlist**: A-shares (Shanghai / Shenzhen / Beijing), HK stocks, US stocks, exchange-traded ETFs/LOFs, and SGE spot gold (e.g. AU9999 gold). Switch between them via the tab bar on the quote card — zero preset stocks, you configure everything
 - **Detail quote card**: click the ball to expand — open / prev close / high / low / volume / turnover / turnover rate / amplitude / P/E / P/B / total market cap / float market cap / limit-up / limit-down prices, plus a real-time mini chart
 - **Dual-mode prediction reference**: based on statistics over the last 80 trading days (MA5/10/20, RSI14, volatility, ratio of up days) it estimates direction, a next-day prediction range, and the probability of an up move. Two modes: **Next-day** (daily-K stats + backtest calibration) and **Real-time** (intraday tick K-line + volume-price). Prediction hit rate is tracked across sessions
 - **Main capital flow & Dragon-Tiger List signals** (A-shares only): main net inflow/outflow, 5-day cumulative flow, consecutive inflow/outflow streak, and strength level; up to 5 recent Dragon-Tiger List appearances (buy/sell amounts and reasons)
@@ -125,6 +126,7 @@ Quotes come from Tencent (primary), with automatic fallback to Eastmoney (backup
 | Hong Kong | `hk00700` (Tencent) | prefix `hk` |
 | US | `usAAPL` (Apple), `usTSLA` (Tesla) | prefix `us` |
 | ETF/LOF | `510300` (CSI 300 ETF), `159919` (CSI 300 ETF Jiashi) | type the 6-digit code directly |
+| SGE spot gold | `AU9999` (Gold 9999), `AU9995` (Gold 9995) | search "黄金" or "黄金999" |
 
 ### Installation (Chrome / Edge)
 

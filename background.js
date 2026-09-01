@@ -6,15 +6,19 @@
 var TX_SEARCH = 'https://smartbox.gtimg.cn/s3/?v=2&q=';
 var EM_API = 'https://push2.eastmoney.com/api/qt/stock/get';
 var KLINE_API = 'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=';
+var EM_TREND_API = 'https://push2his.eastmoney.com/api/qt/stock/trends2/get';
+var EM_KLINE_API = 'https://push2his.eastmoney.com/api/qt/stock/kline/get';
+var EM_SUGGEST = 'https://searchapi.eastmoney.com/api/suggest/get';
+var EM_SUGGEST_TOKEN = 'D43BF722C8E33BDC906FB84D85E326E8';
 
 /* 腾讯行情查询代码：us 需去点转大写，其余市场直接前缀+代码 */
 function txQueryCode(cfg) {
   if (cfg.market === 'us') return 'us' + String(cfg.code).split('.')[0].toUpperCase();
   return cfg.market + cfg.code;
 }
-/* 东财 secid：仅 A 股（sh=1. sz/bj=0.），其余市场无备用源 */
+/* 东财 secid：A 股 sh=1. sz/bj=0.；上金所现货（黄金9999 等）sg=118. */
 function emSecid(cfg) {
-  var m = { sh: '1.', sz: '0.', bj: '0.' }[cfg.market];
+  var m = { sh: '1.', sz: '0.', bj: '0.', sg: '118.' }[cfg.market];
   return m ? m + cfg.code : null;
 }
 
@@ -59,6 +63,7 @@ function fetchTencent(cfg) {
 }
 
 function fetchEM(cfg) {
+  if (cfg.market === 'sg') return fetchSGE(cfg);
   var secid = emSecid(cfg);
   if (!secid) return Promise.reject(new Error('em unsupported market'));
   var url = EM_API + '?secid=' + secid + '&fltt=2&invt=2&fields=f43,f44,f45,f46,f47,f48,f57,f58,f60,f116,f117,f162,f167,f168,f169,f170&_=' + Date.now();
@@ -70,8 +75,92 @@ function fetchEM(cfg) {
     });
 }
 
+/* 上金所现货（黄金9999 等）：push2 无快照，先走分时 trends2；失败再退日K最新一根（今日实时收盘） */
+function fetchSGE(cfg) {
+  var secid = emSecid(cfg);
+  if (!secid) return Promise.reject(new Error('sge unsupported'));
+  return fetchSGETrend(cfg, secid).catch(function () { return fetchSGEKline(cfg, secid); });
+}
+function sgeBuild(price, prevClose, open, high, low, t) {
+  if (!isFinite(price) || price <= 0) throw new Error('bad sge price');
+  if (!isFinite(prevClose) || prevClose <= 0) prevClose = null;
+  return {
+    price: price, prevClose: prevClose, open: open, high: high, low: low,
+    volHand: null, amtYuan: null, turnover: null, pe: null, pb: null,
+    totalCap: null, floatCap: null, lu: null, ld: null,
+    change: (prevClose != null) ? price - prevClose : null,
+    pct: (prevClose != null && prevClose > 0) ? (price - prevClose) / prevClose * 100 : null,
+    t: t || ''
+  };
+}
+function fetchSGETrend(cfg, secid) {
+  var url = EM_TREND_API + '?secid=' + secid +
+    '&fields1=f1,f2,f3,f4,f5,f6,f7,f8&fields2=f51,f53,f56,f58&ndays=1&iscr=0&_=' + Date.now();
+  return fetch(url, { cache: 'no-store' })
+    .then(function (r) { return r.json(); })
+    .then(function (json) {
+      var data = json && json.data;
+      var trends = (data && Array.isArray(data.trends)) ? data.trends : [];
+      if (!trends.length) throw new Error('no sge trend');
+      var pts = trends.map(function (s) { return s.split(','); });
+      var last = pts[pts.length - 1];
+      var open = +pts[0][1], high = -Infinity, low = Infinity;
+      pts.forEach(function (p) { var v = +p[1]; if (v > high) high = v; if (v < low) low = v; });
+      var pc = (data.preClose != null && isFinite(+data.preClose)) ? +data.preClose : +data.preSettlement;
+      return sgeBuild(+last[1], pc, open, high, low, last[0]);
+    });
+}
+function fetchSGEKline(cfg, secid) {
+  var url = EM_KLINE_API + '?secid=' + secid +
+    '&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58&klt=101&fqt=0&end=20500101&lmt=2&_=' + Date.now();
+  return fetch(url, { cache: 'no-store' })
+    .then(function (r) { return r.json(); })
+    .then(function (json) {
+      var kl = (json && json.data && Array.isArray(json.data.klines)) ? json.data.klines : [];
+      if (kl.length < 2) throw new Error('no sge kline');
+      var last = kl[kl.length - 1].split(',');
+      var prev = kl[kl.length - 2].split(',');
+      return sgeBuild(+last[2], +prev[2], +last[1], +last[3], +last[4], last[0]);
+    });
+}
+
 function decodeUni(s) {
   return s.replace(/\\u([0-9a-fA-F]{4})/g, function (m, h) { return String.fromCharCode(parseInt(h, 16)); });
+}
+
+/* 东财搜索补充源：能命中上金所现货（黄金9999/AU9999）等腾讯缺失的品种 */
+var EM_MKT = {
+  SH: 'sh', SZ: 'sz', BJ: 'bj', HK: 'hk', SGE: 'sg',
+  '1': 'sh', '2': 'sh', '5': 'sz', '6': 'sz', '81': 'bj'
+};
+function emType(it, mkt) {
+  var t = String(it.SecurityTypeName || '');
+  if (mkt === 'us') return 'GP-U';
+  if (mkt === 'hk') return 'GP-H';
+  if (mkt === 'sg') return '现货';
+  if (t.indexOf('ETF') >= 0) return 'ETF';
+  if (t.indexOf('LOF') >= 0) return 'LOF';
+  return 'GP-A';
+}
+function emSuggest(q) {
+  var url = EM_SUGGEST + '?input=' + encodeURIComponent(q) +
+    '&type=14&token=' + EM_SUGGEST_TOKEN + '&count=10';
+  return fetch(url, { cache: 'no-store' })
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      var rows = (j && j.QuotationCodeTable && Array.isArray(j.QuotationCodeTable.Data)) ? j.QuotationCodeTable.Data : [];
+      var out = [];
+      rows.forEach(function (it) {
+        var jys = String(it.JYS || '').toUpperCase();
+        var mkt = EM_MKT[jys];
+        if (!mkt && (jys === 'NASDAQ' || jys === 'NYSE' || jys === 'AMEX')) mkt = 'us';
+        if (!mkt || !it.Code || !it.Name) return;
+        if (/^BK/i.test(String(it.Code))) return; /* 板块（如 BK1617 黄金板块）不可报价，剔除 */
+        out.push({ market: mkt, code: String(it.Code), name: String(it.Name), pinyin: String(it.PinYin || ''), type: emType(it, mkt) });
+      });
+      return out;
+    })
+    .catch(function () { return []; });
 }
 
 function searchStock(q) {
@@ -85,6 +174,48 @@ function searchStock(q) {
         var f = s.split('~');
         return { market: f[0], code: f[1], name: decodeUni(f[2] || ''), pinyin: f[3] || '', type: f[4] || '' };
       }).filter(function (x) { return x.code && x.name; });
+    })
+    .then(function (list) {
+      /* 兜底：腾讯接口对「黄金999」「usAAPL」「hk00700」等含数字/市场前缀的关键词常返回空，
+       * 尝试去数字/去前缀后再搜（黄金999 → 黄金；usAAPL → AAPL），命中可交易品种 */
+      if (list.length) return list;
+      var seen = {}, retry = [];
+      function add(v) {
+        v = v.trim();
+        if (!v || v === q || seen[v]) return;
+        seen[v] = 1;
+        retry.push(v);
+      }
+      var d1 = q.replace(/[0-9a-zA-Z]+$/g, '');   /* 黄金999 → 黄金 */
+      if (/[\u4e00-\u9fa5]/.test(d1)) add(d1);
+      var d2 = q.replace(/[0-9a-zA-Z]/g, '');     /* 黄金9999 → 黄金 */
+      if (/[\u4e00-\u9fa5]/.test(d2)) add(d2);
+      var d3 = q.replace(/^(sh|sz|bj|hk|us)/i, ''); /* usAAPL → AAPL、hk00700 → 00700 */
+      if (/^[0-9a-zA-Z.]+$/.test(d3)) add(d3);
+      if (!retry.length) return list;
+      return retry.reduce(function (p, v) {
+        return p.then(function (acc) {
+          return searchStock(v).then(function (r) { return acc.concat(r); });
+        });
+      }, Promise.resolve([]));
+    })
+    .then(function (txList) {
+      /* 合并东财搜索结果（含上金所现货），按 市场+代码 去重 */
+      var probes = [q];
+      /* 纯中文短词（如「黄金」）东财只给股票/ETF，补搜「黄金999」以带出上金所现货 */
+      if (/^[\u4e00-\u9fa5]{2,4}$/.test(q)) probes.push(q + '999');
+      var seen = {};
+      txList.forEach(function (x) { seen[x.market + ':' + x.code] = 1; });
+      return probes.reduce(function (p, v) {
+        return p.then(function () {
+          return emSuggest(v).then(function (emList) {
+            emList.forEach(function (x) {
+              var k = x.market + ':' + x.code;
+              if (!seen[k]) { seen[k] = 1; txList.push(x); }
+            });
+          });
+        });
+      }, Promise.resolve()).then(function () { return txList; });
     });
 }
 
@@ -96,13 +227,18 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
       sendResponse({ ok: false, error: 'missing cfg' });
       return true;
     }
-    fetchTencent(cfg)
-      .then(function (d) { sendResponse({ ok: true, data: d, source: 'tx' }); })
-      .catch(function () {
-        return fetchEM(cfg)
-          .then(function (d) { sendResponse({ ok: true, data: d, source: 'em' }); })
-          .catch(function (e) { sendResponse({ ok: false, error: String((e && e.message) || e) }); });
-      });
+    /* 上金所现货无腾讯源，直接走东财 */
+    var p;
+    if (cfg.market === 'sg') {
+      p = fetchEM(cfg).then(function (d) { return { data: d, source: 'em' }; });
+    } else {
+      p = fetchTencent(cfg).then(function (d) { return { data: d, source: 'tx' }; })
+        .catch(function () {
+          return fetchEM(cfg).then(function (d) { return { data: d, source: 'em' }; });
+        });
+    }
+    p.then(function (r) { sendResponse({ ok: true, data: r.data, source: r.source }); })
+      .catch(function (e) { sendResponse({ ok: false, error: String((e && e.message) || e) }); });
     return true;
   }
   if (msg.type === 'search') {
@@ -160,16 +296,33 @@ function fetchKline(cfg, days) {
   var key = q + ':' + days;
   var c = KLINE_CACHE[key];
   if (c && Date.now() - c.t < KLINE_TTL) return Promise.resolve(c.rows);
-  var url = KLINE_API + q + ',day,,,' + days + ',qfq';
-  return fetch(url, { cache: 'no-store' })
-    .then(function (r) { return r.json(); })
-    .then(function (json) {
-      var node = json && json.data && json.data[q];
-      var rows = (node && (node.qfqday || node.day)) || [];
-      if (rows.length < 30) throw new Error('kline insufficient');
-      KLINE_CACHE[key] = { t: Date.now(), rows: rows };
-      return rows;
-    });
+  var p;
+  if (cfg.market === 'sg') {
+    /* 上金所现货：腾讯无K线，走东财日K（列位与腾讯一致：[日期,开,收,高,低,量,额]） */
+    var url = EM_KLINE_API + '?secid=' + emSecid(cfg) +
+      '&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58&klt=101&fqt=0&end=20500101&lmt=' + days + '&_=' + Date.now();
+    p = fetch(url, { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (json) {
+        var kl = (json && json.data && Array.isArray(json.data.klines)) ? json.data.klines : [];
+        var rows = kl.map(function (s) { return s.split(','); });
+        if (rows.length < 30) throw new Error('kline insufficient');
+        KLINE_CACHE[key] = { t: Date.now(), rows: rows };
+        return rows;
+      });
+  } else {
+    var url = KLINE_API + q + ',day,,,' + days + ',qfq';
+    p = fetch(url, { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (json) {
+        var node = json && json.data && json.data[q];
+        var rows = (node && (node.qfqday || node.day)) || [];
+        if (rows.length < 30) throw new Error('kline insufficient');
+        KLINE_CACHE[key] = { t: Date.now(), rows: rows };
+        return rows;
+      });
+  }
+  return p;
 }
 
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }

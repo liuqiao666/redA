@@ -671,6 +671,13 @@ function marketStatus() {
   if (day === 0 || day === 6) return { txt: '休市', live: false };
   var m = now.getHours() * 60 + now.getMinutes();
   var mk = cfg ? cfg.market : 'sz';
+  if (mk === 'sg') {
+    /* 上金所现货：日盘 9:00-11:30、13:30-15:30，夜盘 20:00-次日 2:30 */
+    if ((m >= 9 * 60 && m <= 11 * 60 + 30) || (m >= 13 * 60 + 30 && m <= 15 * 60 + 30) || m >= 20 * 60 || m < 2 * 60 + 30) {
+      return { txt: '交易中', live: true };
+    }
+    return { txt: '已收盘', live: false };
+  }
   if (mk === 'hk') {
     if (m < 9 * 60 + 30) return { txt: '未开盘', live: false };
     if (m <= 12 * 60) return { txt: '交易中', live: true };

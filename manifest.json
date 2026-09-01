@@ -9,6 +9,7 @@
     "https://push2.eastmoney.com/*",
     "https://push2his.eastmoney.com/*",
     "https://datacenter-web.eastmoney.com/*",
+    "https://searchapi.eastmoney.com/*",
     "https://moyuhot.com/*",
     "https://api.nowhots.com/*",
     "https://nowhots.com/*"
