@@ -35,6 +35,16 @@ function loadActive(cb) {
 function saveActive(i, cb) {
   chrome.storage.local.set({ chhActive: i }, cb || function () {});
 }
+/* 持仓列表存储：chhHoldings = [{market, code, name, qty, cost}, ...]
+ * qty 为持股数量（股），cost 为每股成本（对应币种）。 */
+function loadHoldings(cb) {
+  chrome.storage.local.get('chhHoldings', function (o) {
+    cb((o && Array.isArray(o.chhHoldings)) ? o.chhHoldings.slice() : []);
+  });
+}
+function saveHoldings(list, cb) {
+  chrome.storage.local.set({ chhHoldings: list }, cb || function () {});
+}
 function marketLabel(m) { return MARKET_LABEL[m] || String(m || '').toUpperCase(); }
 function typeLabel(t) { return TYPE_LABEL[t] || t || '证券'; }
 function isStockType(t) { return !!STOCK_TYPES[t]; }

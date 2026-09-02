@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "实时股价",
-  "version": "3.4.0",
-  "description": "全局实时股价悬浮球，可自行配置多只 A股/港股/美股/ETF/LOF 并随时切换，含实时/次日双模式预测、主力资金流与龙虎榜信号、热榜资讯参考。拖动移动，点击展开行情详情。数据源：腾讯行情（备用：东方财富）。",
+  "version": "3.5.1",
+  "description": "全局实时股价悬浮球，可自行配置多只 A股/港股/美股/ETF/LOF 并随时切换，含实时/次日双模式预测、主力资金流与龙虎榜信号、量化综合评分、热榜资讯参考。拖动移动，点击展开行情详情。数据源：腾讯行情（备用：东方财富）。",
   "permissions": ["storage", "notifications", "alarms"],
   "host_permissions": [
     "https://*.gtimg.cn/*",

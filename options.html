@@ -70,6 +70,26 @@ body{font-family:'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',sans-serif;c
 .msg{display:none;margin-top:14px;padding:10px 14px;border-radius:9px;font-size:12px}
 .msg.ok{display:block;color:#047857;background:#ecfdf5;border:1px solid #a7f3d0}
 .msg.err{display:block;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca}
+.hsum{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+.hs{background:#f8fafc;border:1px solid var(--lineSoft);border-radius:10px;padding:9px 12px}
+.hs span{display:block;font-size:10px;color:var(--ink3);letter-spacing:.06em}
+.hs b{display:block;font-family:var(--num);font-size:15px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums;color:var(--ink)}
+.hs b.up{color:var(--up)}.hs b.down{color:var(--down)}
+.hrow .v{font-family:var(--num);font-size:11.5px;color:var(--ink2);flex-shrink:0;font-variant-numeric:tabular-nums}
+.hpl{font-family:var(--num);font-size:12.5px;font-weight:700;flex-shrink:0;min-width:92px;text-align:right;font-variant-numeric:tabular-nums}
+.hpl.up{color:var(--up)}.hpl.down{color:var(--down)}.hpl.flat{color:var(--ink3)}
+.hrow.edit .nm{flex:none;font-size:12px;color:var(--ink2)}
+.hrow.edit label{display:flex;flex-direction:column;gap:3px;font-size:9.5px;color:var(--ink3)}
+.hrow.edit input{width:86px;padding:6px 8px;border-radius:7px;outline:none;font-size:12px;color:var(--ink);background:#f8fafc;border:1px solid var(--line);font-family:var(--num);transition:border-color .2s,box-shadow .2s}
+.hrow.edit input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.12);background:#fff}
+.qtyrow{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-top:10px;padding:12px;border:1px dashed var(--line);border-radius:10px;background:#fbfcfe}
+.qtyrow label{flex:1;min-width:120px;font-size:11px;color:var(--ink3);letter-spacing:.06em;display:flex;flex-direction:column;gap:6px}
+.qtyrow input{padding:8px 10px;border-radius:8px;outline:none;font-size:13px;color:var(--ink);background:#f8fafc;border:1px solid var(--line);font-family:var(--num);transition:border-color .2s,box-shadow .2s}
+.qtyrow input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.12);background:#fff}
+.qtyrow button{padding:9px 18px;border-radius:8px;border:1px solid var(--blue);background:var(--blue);color:#fff;font-size:12px;letter-spacing:.1em;cursor:pointer;transition:background .2s;font-family:inherit}
+.qtyrow button:hover{background:var(--blueDeep)}
+.qtyrow button.ghost{background:#fff;color:var(--ink2);border-color:var(--line)}
+.qtyrow button.ghost:hover{color:var(--blue);border-color:var(--blue)}
 .notes{margin-top:20px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:0 2px 10px rgba(15,23,42,.05)}
 .notes h2{font-size:13px;font-weight:700;letter-spacing:.1em;color:var(--blue);margin-bottom:10px}
 .notes ul{list-style:none}
@@ -159,6 +179,55 @@ body{font-family:'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',sans-serif;c
   </div>
 
   <div class="card">
+    <h2>量化综合评分</h2>
+    <div class="visrow">
+      <div>
+        <div class="vnm">开启量化评分</div>
+        <div class="vsub" id="quantSub">--</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="quantToggle">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="alrow">
+      <label>趋势权重（%）<input type="number" id="qwTrend" step="5" min="0" max="100"></label>
+      <label>资金权重（%）<input type="number" id="qwFund" step="5" min="0" max="100"></label>
+      <label>量价权重（%）<input type="number" id="qwVol" step="5" min="0" max="100"></label>
+      <label>情绪权重（%）<input type="number" id="qwNews" step="5" min="0" max="100"></label>
+      <label>估值权重（%）<input type="number" id="qwValue" step="5" min="0" max="100"></label>
+    </div>
+    <div class="tip">行情卡「智能预测 → 量化」页签展示综合评分（0~100）、五因子分项条形、可读信号与风险提示。综合分 = Σ(因子×权重)/Σ权重×100：趋势（均线排列/MACD/RSI/KDJ/ADX 子信号）、资金（主力净流入占比、5日累计、连续流向、龙虎榜）、量价（VWAP 位置/30分钟动量/量比/日内位置）、情绪（资讯正负与热度）、估值（PE/PB 对数平滑）。评分仅供技术参考，不构成投资建议。</div>
+  </div>
+
+  <div class="card">
+    <h2>我的持仓（本地记账）</h2>
+    <div class="hsum">
+      <div class="hs"><span>总市值</span><b id="hMv">--</b></div>
+      <div class="hs"><span>持仓成本</span><b id="hCost">--</b></div>
+      <div class="hs"><span>累计盈亏</span><b id="hPl">--</b></div>
+      <div class="hs"><span>当日盈亏</span><b id="hDay">--</b></div>
+    </div>
+    <div class="mylist" id="hdlist">
+      <div class="emp" id="hdEmp">暂无持仓记录，请在下方搜索添加</div>
+    </div>
+    <h2>添加持仓</h2>
+    <div class="seek">
+      <input id="hkw" type="text" placeholder="输入名称或代码搜索股票，如：茅台、002895" autocomplete="off">
+      <button id="hbtn">搜索</button>
+    </div>
+    <div class="list" id="hlist"></div>
+    <div class="qtyrow" id="qtyrow" style="display:none">
+      <label>数量（股）<input type="number" id="hqty" step="100" min="1" placeholder="如 1000"></label>
+      <label>成本价（每股）<input type="number" id="hcost" step="0.001" min="0" placeholder="如 12.50"></label>
+      <button id="hadd">确认添加</button>
+      <button class="ghost" id="hcancel">取消</button>
+    </div>
+    <div class="tip">持仓数据仅保存在浏览器本地，不上传任何服务器。累计盈亏 =（现价 − 成本）× 数量，成本价请按实际买入价（可含手续费折算）填写；当日盈亏按昨收计算。行情卡「智能预测 → 持仓」页签可随时查看汇总与明细。</div>
+    <div class="msg" id="hmsg"></div>
+  </div>
+
+  <div class="card">
     <h2>已配置股票</h2>
     <div class="mylist" id="mylist">
       <div class="emp" id="myEmp">尚未配置股票，请在下方搜索添加</div>
@@ -180,7 +249,7 @@ body{font-family:'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',sans-serif;c
       <li><b>悬浮球操作：</b>拖动移动位置，单击展开行情卡，Esc 收起。点击悬浮球右上角 × 或行情卡内「隐藏」可关闭悬浮球；在本页「悬浮球显示」中可随时重新开启。</li>
       <li><b>快速切换：</b>点击浏览器工具栏的扩展图标，在弹窗中搜索添加 / 切换 / 移除。</li>
       <li><b>行情卡内的「设置」按钮</b>也会打开本页面。</li>
-      <li><b>行情卡内的「智能预测」</b>：分「实时 / 次日 / 资金 / 资讯」四栏。实时预测基于分时K线（精确均价、30分钟动量、量能、日内位置）与大盘指数评估剩余交易空间与方向；次日预测基于近 120 日K线的均线/MACD/KDJ/BOLL/ATR/OBV/ADX/CCI 多指标综合打分，并按滚动回测校准概率、记录历史命中率；资金栏展示主力资金流（含超大/大/中/小单、近5日累计、连续流向）与龙虎榜上榜记录（仅A股）；资讯栏从摸鱼热榜与即时热点抓取相关热榜，按关键词做利好/利空情绪标注。仅供技术参考，不构成投资建议。</li>
+      <li><b>行情卡内的「智能预测」</b>：分「实时 / 次日 / 资金 / 资讯 / 量化」五栏。实时预测基于分时K线（精确均价、30分钟动量、量能、日内位置）与大盘指数评估剩余交易空间与方向；次日预测基于近 120 日K线的均线/MACD/KDJ/BOLL/ATR/OBV/ADX/CCI 多指标综合打分，并按滚动回测校准概率、记录历史命中率；资金栏展示主力资金流（含超大/大/中/小单、近5日累计、连续流向）与龙虎榜上榜记录（仅A股）；资讯栏从摸鱼热榜与即时热点抓取相关热榜，按关键词做利好/利空情绪标注；量化栏将趋势/资金/量价/情绪/估值五因子加权合成为 0-100 综合评分（权重可在本页「量化综合评分」调整）。仅供技术参考，不构成投资建议。</li>
       <li><b>支持市场：</b>A股（沪深京）、港股、美股、场内ETF/LOF。数据源：<span class="hl">腾讯行情</span>（A股失败时自动降级<span class="hl">东方财富</span>）。</li>
       <li><b>刷新频率：</b>交易时段每 3 秒，非交易时段每 15 秒；自动识别开闭市状态。</li>
       <li>行情仅供展示，不构成投资建议；特殊页面（chrome://、应用商店等）出于浏览器安全限制不显示悬浮球。</li>

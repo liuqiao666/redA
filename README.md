@@ -18,14 +18,16 @@ A Manifest V3 browser extension that shows a draggable global floating ball over
 
 ### 功能特性
 
-- **全局悬浮球**：在所有网页之上显示可拖动的悬浮球，实时展示最新价、涨跌幅（红涨绿跌）；松手自动贴边停靠，位置跨网页记忆，首次使用有操作提示
+- **全局悬浮球**：在所有网页之上显示可拖动的悬浮球，实时展示最新价、涨跌幅（红涨绿跌）；松手自动贴边停靠，位置跨网页记忆，首次使用有操作提示。配置持仓后，悬浮球底部自动显示持仓累计盈亏（红盈绿亏），鼠标悬停可见总市值与当日盈亏
 - **多股票支持**：A股（沪深北）/ 港股 / 美股 / 场内 ETF·LOF / 上金所现货（黄金9999 等），行情卡顶部标签栏一键切换；完全无预设股票，全部由你自行搜索添加
 - **行情详情卡**：点击悬浮球展开，展示今开 / 昨收 / 最高 / 最低 / 成交量 / 成交额 / 换手率 / 振幅 / 市盈率 / 市净率 / 总市值 / 流通市值 / 涨停 / 跌停，以及实时迷你走势
 - **双模式预测参考**：基于近 80 个交易日历史统计（均线 MA5/10/20、RSI14、波动率、上涨天数占比）给出方向、次日预测区间与上涨概率；支持「次日」模式（日K统计 + 回测校准）与「实时」模式（分时K线 + 盘中量价），并跨会话追踪预测命中率
+- **量化综合评分**：新增「量化」页签（智能预测区），把趋势（均线排列/MACD/RSI/KDJ/ADX）、资金（主力净流入占比、5日累计、连续流向、龙虎榜）、量价（VWAP 位置/30分钟动量/量比/日内位置）、情绪（资讯正负与热度）、估值（PE/PB 对数平滑）五因子加权合成为 0-100 综合分，分项条形可视化，并输出可读信号与风险提示（高波动/超买/量比异常/换手过高/短线上涨过大）；五因子权重可在设置页调整，默认趋势 30% / 资金 30% / 量价 20% / 情绪 10% / 估值 10%
 - **主力资金流与龙虎榜信号**（仅A股）：主力净流入/流出（盘中实时更新，约每 60 秒刷新）、5 日累计、连续流入/流出天数、强度等级；龙虎榜近 5 条上榜记录（买卖金额、上榜原因）
 - **个股资讯参考**：多源聚合 —— 东方财富个股新闻检索（财联社/证券时报/中国证券报等）+ 新浪财经7x24快讯 + 雪球/微博/百度热榜，按股票名称/代码匹配并做积极/消极情绪分析
 - **盘口与关联行情**：行情卡内可展开「盘口」——买一~买五 / 卖一~卖五五档挂单（红卖绿买）、大盘指数（A股三大指数 / 恒生 / 美股三大指数）、所属行业与概念板块实时涨跌（A股），盘中约每 60 秒刷新
 - **异动提醒**：交易时段每分钟自动检测自选股量价异动（放量上涨 / 放量下跌 / 缩量上涨 / 缩量下跌），命中即发送浏览器通知并附次日预测区间与上涨概率；同股同信号默认 2 小时冷却去重。**主力资金异动监控**（仅A股）：主力净流入/流出金额与占比同时达到阈值时推送「主力大幅流入 / 主力大幅流出」。支持**同步推送飞书群机器人**：配置 Webhook 后以红涨绿跌的可视化卡片展示信号与详情。信号阈值、冷却时间、飞书推送均可在设置页调整
+- **持仓记账**：在设置页录入您的持仓（股票 + 数量 + 成本价），自动按实时行情计算总市值、累计盈亏、当日盈亏；行情卡「智能预测 → 持仓」页签随时查看汇总与明细。数据仅保存在浏览器本地，不上传任何服务器
 - **配置实时同步**：配置修改后所有已打开网页即时生效
 - **低权限**：仅申请 `storage`（数据）、`notifications`（异动提醒）、`alarms`（定时检测）
 
@@ -56,6 +58,15 @@ A Manifest V3 browser extension that shows a draggable global floating ball over
 - **方式一（最快）**：点击浏览器工具栏的扩展图标，弹出配置面板。在搜索框输入名称/代码（如：`茅台`、`002895`、`hk00700`、`usAAPL`、`510300`），点击候选项即加入列表并设为当前展示；点击已配置列表中的某项可切换展示，悬停可移除
 - **方式二**：点击悬浮球展开行情卡 → 「设置」按钮 → 完整设置页添加 / 切换 / 移除
 - **方式三**：在扩展管理页（`chrome://extensions`）点击本扩展「详情」→「扩展程序选项」
+
+### 如何添加持仓
+
+1. 打开设置页（点击悬浮球行情卡 → 设置，或在扩展管理页打开「扩展程序选项」）
+2. 在「我的持仓」卡片中搜索股票（名称 / 代码均可），点击候选后填写**数量（股）**与**成本价（每股）**，确认添加
+3. 列表即时显示每只持仓的累计盈亏（红盈绿亏）；顶部汇总显示总市值、持仓成本、累计盈亏、当日盈亏
+4. 行情卡「智能预测 → 持仓」页签可随时查看持仓汇总与明细，点击「去设置页管理持仓」可快速回到录入界面
+
+> 持仓为本地记账，自动按实时行情计算，不涉及券商账户与交易；成本价建议按实际买入价（可含手续费折算）填写。
 
 ### 预测参考说明
 
@@ -110,7 +121,7 @@ Quotes come from Tencent (primary), with automatic fallback to Eastmoney (backup
 
 ### Features
 
-- **Global floating ball**: a draggable ball on top of every web page showing the latest price and change % (red up / green down). It snaps to the screen edge on release and remembers its position across pages; first-time users get a quick hint
+- **Global floating ball**: a draggable ball on top of every web page showing the latest price and change % (red up / green down). It snaps to the screen edge on release and remembers its position across pages; first-time users get a quick hint. Once holdings are configured, the ball also shows total holding P/L at the bottom (red profit / green loss); hovering reveals total market value and day P/L
 - **Multi-stock watchlist**: A-shares (Shanghai / Shenzhen / Beijing), HK stocks, US stocks, exchange-traded ETFs/LOFs, and SGE spot gold (e.g. AU9999 gold). Switch between them via the tab bar on the quote card — zero preset stocks, you configure everything
 - **Detail quote card**: click the ball to expand — open / prev close / high / low / volume / turnover / turnover rate / amplitude / P/E / P/B / total market cap / float market cap / limit-up / limit-down prices, plus a real-time mini chart
 - **Dual-mode prediction reference**: based on statistics over the last 80 trading days (MA5/10/20, RSI14, volatility, ratio of up days) it estimates direction, a next-day prediction range, and the probability of an up move. Two modes: **Next-day** (daily-K stats + backtest calibration) and **Real-time** (intraday tick K-line + volume-price). Prediction hit rate is tracked across sessions
@@ -118,6 +129,7 @@ Quotes come from Tencent (primary), with automatic fallback to Eastmoney (backup
 - **Stock news reference**: multi-source aggregation — Eastmoney per-stock news search (Cailianshe / Securities Times / China Securities Journal, etc.) + Sina Finance 7x24 flash news + Xueqiu/Weibo/Baidu hot lists, matched by stock name/code with positive/negative sentiment scoring
 - **Order book & related quotes**: expand the "Order Book" section in the quote card — level-1~5 bid/ask quotes (red asks / green bids), major indices (CSI/SZSE/ChiNext for A-shares, Hang Seng for HK, Dow/Nasdaq/S&P 500 for US), and the stock's industry/concept board changes (A-shares), refreshing roughly every 60s during trading hours
 - **Anomaly alerts**: during trading hours, the extension checks your watchlist every minute for volume-price anomalies (volume surge up / volume surge down / volume shrink up / volume shrink down) and pushes a browser notification with the next-day prediction range and up probability; the same signal is suppressed for 2 hours by default. **Main-capital anomaly monitoring** (A-shares only): pushes "main capital surge in / out" when net inflow/outflow amount AND ratio both pass the threshold. Supports **push to a Feishu (Lark) group bot via Webhook** — a red-up/green-down visual card with the signal and details. Thresholds, cooldown, and Feishu push are all configurable in the settings page
+- **Holding ledger**: enter your positions (stock + quantity + cost price) in the settings page; market value, total P/L and day P/L are computed from live quotes automatically. The "Holdings" tab under Smart Prediction on the quote card shows the summary and details anytime. Data stays in the browser locally, never uploaded anywhere
 - **Live config sync**: changes apply instantly to every already-open page
 - **Minimal permissions**: only `storage` (data), `notifications` (anomaly alerts), and `alarms` (scheduled checks)
 
@@ -148,6 +160,15 @@ Quotes come from Tencent (primary), with automatic fallback to Eastmoney (backup
 - **Fastest way**: click the extension icon in the toolbar. Type a name or code in the search box (e.g. `Moutai`, `002895`, `hk00700`, `usAAPL`, `510300`), then click a suggestion to add it and make it active. Click any item in the configured list to switch; hover to remove
 - **Via the card**: click the floating ball → **Settings** button → full settings page for add / switch / remove
 - **Via browser**: `chrome://extensions` → this extension's **Details** → **Extension options**
+
+### How to add holdings
+
+1. Open the settings page (floating ball → Settings, or Extensions page → this extension's "Extension options")
+2. In the "My Holdings" card, search a stock (name or code), click a candidate, then fill in **quantity (shares)** and **cost price (per share)** and confirm
+3. The list shows each position's total P/L instantly (red profit / green loss); the summary on top shows total market value, cost basis, total P/L and day P/L
+4. The "Holdings" tab under Smart Prediction on the quote card shows the summary and details anytime; the "Manage holdings" button jumps back to the entry page
+
+> Holdings are a local ledger computed from live quotes; no brokerage account or trading is involved. Enter the cost price as your actual buy-in (fees may be included).
 
 ### About the prediction
 

@@ -25,8 +25,16 @@ var larkUrl = document.getElementById('larkUrl');
 var larkTest = document.getElementById('larkTest');
 var alertFundAmt = document.getElementById('alertFundAmt');
 var alertFundPct = document.getElementById('alertFundPct');
+var quantToggle = document.getElementById('quantToggle');
+var quantSub = document.getElementById('quantSub');
+var qwTrend = document.getElementById('qwTrend');
+var qwFund = document.getElementById('qwFund');
+var qwVol = document.getElementById('qwVol');
+var qwNews = document.getElementById('qwNews');
+var qwValue = document.getElementById('qwValue');
 
 var ALERT_DEFAULTS = { on: true, ratioUp: 1.8, ratioDown: 0.5, pct: 3, cd: 120, larkOn: false, larkUrl: '', fundOn: true, fundAmt: 5000, fundPct: 5 };
+var QUANT_DEFAULTS = { on: true, wTrend: 30, wFund: 30, wVol: 20, wNews: 10, wValue: 10 };
 
 var stocks = [];
 var activeIdx = 0;
@@ -300,6 +308,50 @@ larkTest.addEventListener('click', function () {
   });
 });
 
+/* ---- 量化综合评分配置 ---- */
+function renderQuantCfg() {
+  chrome.storage.local.get('chhQuant', function (o) {
+    var cfg = Object.assign({}, QUANT_DEFAULTS, (o && o.chhQuant) || {});
+    quantToggle.checked = !!cfg.on;
+    quantSub.textContent = cfg.on ? '当前：已开启（行情卡展示量化评分）' : '当前：已关闭';
+    qwTrend.value = cfg.wTrend;
+    qwFund.value = cfg.wFund;
+    qwVol.value = cfg.wVol;
+    qwNews.value = cfg.wNews;
+    qwValue.value = cfg.wValue;
+  });
+}
+function saveQuant(part, cb) {
+  chrome.storage.local.get('chhQuant', function (o) {
+    var cfg = Object.assign({}, QUANT_DEFAULTS, (o && o.chhQuant) || {}, part);
+    chrome.storage.local.set({ chhQuant: cfg }, cb || function () {});
+  });
+}
+quantToggle.addEventListener('change', function () {
+  saveQuant({ on: quantToggle.checked }, function () {
+    showMsg('ok', quantToggle.checked ? '量化评分已开启' : '量化评分已关闭');
+  });
+});
+var QW_INPUTS = [
+  ['qwTrend', 'wTrend'], ['qwFund', 'wFund'], ['qwVol', 'wVol'],
+  ['qwNews', 'wNews'], ['qwValue', 'wValue']
+];
+var QW_LABELS = { wTrend: '趋势', wFund: '资金', wVol: '量价', wNews: '情绪', wValue: '估值' };
+QW_INPUTS.forEach(function (pair) {
+  var el = document.getElementById(pair[0]), key = pair[1];
+  el.addEventListener('change', function () {
+    var v = parseInt(el.value, 10);
+    if (!isFinite(v) || v < 0 || v > 100) {
+      showMsg('err', QW_LABELS[key] + '权重需在 0~100 之间');
+      renderQuantCfg();
+      return;
+    }
+    var part = {};
+    part[key] = v;
+    saveQuant(part, function () { showMsg('ok', QW_LABELS[key] + '权重已更新'); });
+  });
+});
+
 function reload() {
   loadStocks(function (s) {
     stocks = s;
@@ -316,3 +368,230 @@ function reload() {
 reload();
 renderVis();
 renderAlert();
+renderQuantCfg();
+
+/* ================= 我的持仓（本地记账） ================= */
+var hkw = document.getElementById('hkw');
+var hbtn = document.getElementById('hbtn');
+var hlist = document.getElementById('hlist');
+var hdlist = document.getElementById('hdlist');
+var hdEmp = document.getElementById('hdEmp');
+var hmsg = document.getElementById('hmsg');
+var qtyrow = document.getElementById('qtyrow');
+var hqty = document.getElementById('hqty');
+var hcostEl = document.getElementById('hcost');
+var hadd = document.getElementById('hadd');
+var hcancel = document.getElementById('hcancel');
+var hMv = document.getElementById('hMv');
+var hCostEl = document.getElementById('hCost');
+var hPlEl = document.getElementById('hPl');
+var hDayEl = document.getElementById('hDay');
+
+var holdings = [];
+var holdQuotes = {};
+var pendingHold = null;
+
+function hkey(h) { return h.market + ':' + h.code; }
+function fmtNum(v, digit) {
+  if (v == null || isNaN(v)) return '--';
+  return v.toFixed(digit == null ? 2 : digit);
+}
+function fmtMoney(v) {
+  if (v == null || isNaN(v)) return '--';
+  var neg = v < 0, a = Math.abs(v), s;
+  if (a >= 1e8) s = (a / 1e8).toFixed(2) + '亿';
+  else if (a >= 1e4) s = (a / 1e4).toFixed(2) + '万';
+  else s = a.toFixed(0);
+  return (neg ? '-' : (v > 0 ? '+' : '')) + s;
+}
+function fmtMoney2(v) {
+  if (v == null || isNaN(v)) return '--';
+  if (v >= 1e8) return (v / 1e8).toFixed(2) + '亿';
+  if (v >= 1e4) return (v / 1e4).toFixed(2) + '万';
+  return v.toFixed(0);
+}
+function plCls(v) {
+  return (v == null || isNaN(v)) ? 'flat' : (v > 0 ? 'up' : (v < 0 ? 'down' : 'flat'));
+}
+function showHMsg(kind, text) {
+  hmsg.className = 'msg ' + kind;
+  hmsg.textContent = text;
+  setTimeout(function () { hmsg.className = 'msg'; }, 2600);
+}
+function hquote(h) { return holdQuotes[hkey(h)] || {}; }
+
+function renderHoldings() {
+  hdlist.innerHTML = '';
+  hdEmp.style.display = holdings.length ? 'none' : 'block';
+  holdings.forEach(function (h, i) {
+    var q = hquote(h);
+    var d = document.createElement('div');
+    d.className = 'mrow';
+    d.innerHTML =
+      '<span class="mk">' + marketLabel(h.market) + '</span>' +
+      '<span class="nm">' + esc(h.name) + '</span>' +
+      '<span class="cd">' + esc(displayCode(h)) + ' · ' + fmtNum(h.qty, 0) + '股</span>' +
+      '<span class="hpl ' + plCls(q.pl) + '">' + fmtMoney(q.pl) + '</span>' +
+      '<span class="ops"><button class="ed">编辑</button><button class="del">删除</button></span>';
+    d.querySelector('.ed').addEventListener('click', function (e) {
+      e.stopPropagation();
+      renderHoldEdit(d, i);
+    });
+    d.querySelector('.del').addEventListener('click', function (e) {
+      e.stopPropagation();
+      removeHold(i);
+    });
+    hdlist.appendChild(d);
+  });
+}
+
+function renderHoldEdit(row, i) {
+  var h = holdings[i];
+  row.classList.add('edit');
+  row.innerHTML =
+    '<span class="nm">' + esc(h.name) + '</span>' +
+    '<label>数量（股）<input class="eq" type="number" min="1" step="100" value="' + h.qty + '"></label>' +
+    '<label>成本价<input class="ec" type="number" min="0" step="0.001" value="' + h.cost + '"></label>' +
+    '<span class="ops"><button class="ok">保存</button><button class="cx">取消</button></span>';
+  var eq = row.querySelector('.eq');
+  var ec = row.querySelector('.ec');
+  row.querySelector('.ok').addEventListener('click', function () {
+    var q = parseFloat(eq.value), c = parseFloat(ec.value);
+    if (!isFinite(q) || q <= 0) { showHMsg('err', '数量需大于 0'); return; }
+    if (!isFinite(c) || c < 0) { showHMsg('err', '成本价需 ≥ 0'); return; }
+    h.qty = Math.round(q);
+    h.cost = c;
+    saveHoldings(holdings, function () {
+      showHMsg('ok', '已更新 ' + h.name + ' 持仓');
+      fetchHoldQuotes();
+    });
+  });
+  row.querySelector('.cx').addEventListener('click', function () { renderHoldings(); });
+}
+
+function removeHold(i) {
+  var h = holdings[i];
+  holdings.splice(i, 1);
+  saveHoldings(holdings, function () {
+    showHMsg('ok', '已删除 ' + h.name + ' 持仓');
+    delete holdQuotes[hkey(h)];
+    fetchHoldQuotes();
+  });
+}
+
+function fetchHoldQuotes() {
+  if (!holdings.length) {
+    holdQuotes = {};
+    renderHoldings();
+    renderHoldSum(null);
+    return;
+  }
+  chrome.runtime.sendMessage({ type: 'holdings' }, function (resp) {
+    if (chrome.runtime.lastError || !resp || !resp.ok) return;
+    holdQuotes = {};
+    (resp.items || []).forEach(function (it) { holdQuotes[it.market + ':' + it.code] = it; });
+    renderHoldings();
+    renderHoldSum(resp.sum);
+  });
+}
+
+function renderHoldSum(sum) {
+  hMv.className = hCostEl.className = hPlEl.className = hDayEl.className = '';
+  if (!sum) {
+    hMv.textContent = hCostEl.textContent = hPlEl.textContent = hDayEl.textContent = '--';
+    return;
+  }
+  hMv.textContent = fmtMoney2(sum.mv);
+  hCostEl.textContent = fmtMoney2(sum.costAmt);
+  hPlEl.textContent = fmtMoney(sum.pl);
+  hPlEl.className = plCls(sum.pl);
+  hDayEl.textContent = fmtMoney(sum.dayPl);
+  hDayEl.className = plCls(sum.dayPl);
+}
+
+function doHSearch() {
+  var q = hkw.value.trim();
+  if (!q) return;
+  hlist.innerHTML = '<div class="emp">搜索中…</div>';
+  searchStocks(q)
+    .then(function (items) {
+      items.sort(function (a, b) {
+        var x = isStockType(a.type) ? 0 : 1, y = isStockType(b.type) ? 0 : 1;
+        return x - y;
+      });
+      renderHList(items);
+    })
+    .catch(function () {
+      hlist.innerHTML = '<div class="emp">搜索失败，请检查网络后重试</div>';
+    });
+}
+function renderHList(items) {
+  hlist.innerHTML = '';
+  if (!items.length) {
+    hlist.innerHTML = '<div class="emp">未找到匹配项，换个关键字试试</div>';
+    return;
+  }
+  items.forEach(function (it) {
+    var d = document.createElement('div');
+    d.className = 'item';
+    var exists = holdings.some(function (s) {
+      return s.market === it.market && String(s.code) === String(it.code);
+    });
+    d.innerHTML = '<span class="mk">' + marketLabel(it.market) + '</span>' +
+      '<span class="nm">' + esc(it.name) + '</span>' +
+      '<span class="cd">' + esc(displayCode(it)) + '</span>' +
+      '<span class="tp">' + esc(typeLabel(it.type)) + '</span>' +
+      (exists ? '<span class="act" style="color:#94a3b8">已添加</span>' : '<span class="add">+ 选择</span>');
+    d.addEventListener('click', function () {
+      if (exists) { showHMsg('err', '该股票已在持仓列表中'); return; }
+      pickHold(it);
+    });
+    hlist.appendChild(d);
+  });
+}
+function pickHold(it) {
+  pendingHold = { market: it.market, code: it.code, name: it.name };
+  hqty.value = '';
+  hcostEl.value = '';
+  qtyrow.style.display = 'flex';
+  hqty.focus();
+}
+hbtn.addEventListener('click', doHSearch);
+hkw.addEventListener('keydown', function (e) { if (e.key === 'Enter') doHSearch(); });
+hkw.addEventListener('input', function () { if (hkw.value.trim().length >= 2) doHSearch(); });
+hadd.addEventListener('click', function () {
+  if (!pendingHold) { showHMsg('err', '请先搜索并选择一只股票'); return; }
+  var q = parseFloat(hqty.value), c = parseFloat(hcostEl.value);
+  if (!isFinite(q) || q <= 0) { showHMsg('err', '请填写数量（股），需大于 0'); return; }
+  if (!isFinite(c) || c < 0) { showHMsg('err', '请填写成本价（每股），需 ≥ 0'); return; }
+  holdings.push({
+    market: pendingHold.market, code: pendingHold.code, name: pendingHold.name,
+    qty: Math.round(q), cost: c
+  });
+  saveHoldings(holdings, function () {
+    showHMsg('ok', '已添加 ' + pendingHold.name + ' 持仓');
+    pendingHold = null;
+    qtyrow.style.display = 'none';
+    hkw.value = '';
+    hlist.innerHTML = '';
+    fetchHoldQuotes();
+  });
+});
+hcancel.addEventListener('click', function () {
+  pendingHold = null;
+  qtyrow.style.display = 'none';
+  hlist.innerHTML = '';
+});
+
+function reloadHoldings() {
+  loadHoldings(function (list) {
+    holdings = list;
+    fetchHoldQuotes();
+  });
+}
+chrome.storage.onChanged.addListener(function (changes, area) {
+  if (area !== 'local' || !changes.chhHoldings) return;
+  reloadHoldings();
+});
+reloadHoldings();
+setInterval(fetchHoldQuotes, 30000);
