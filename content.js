@@ -86,13 +86,50 @@ var CSS = `
 .hint.show{opacity:1;transform:none}
 
 .card{
-  position:fixed;width:352px;max-width:calc(100vw - 24px);pointer-events:auto;
+  position:fixed;width:700px;max-width:calc(100vw - 24px);pointer-events:auto;
   background:#ffffff;border:1px solid ${THEME.line};border-radius:16px;
   box-shadow:0 24px 60px rgba(15,23,42,.16),0 4px 14px rgba(15,23,42,.06);
   opacity:0;transform:scale(.94) translateY(8px);pointer-events:none;
   transition:opacity .22s ease,transform .24s cubic-bezier(.2,.9,.3,1.18);
 }
 .card.open{opacity:1;transform:none;pointer-events:auto}
+/* 顶部双栏：左侧 股票名+实时价，右侧 AI 智能研判 */
+.card .top{display:flex;gap:14px;padding:16px 18px 0}
+.card .topL{flex:0 0 240px;min-width:0;display:flex;flex-direction:column;gap:10px}
+.card .topL .hd{padding:0;flex-direction:column;align-items:flex-start;gap:4px}
+.card .nameWrap{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.card .nameWrap .status{margin-top:0}
+.card .topL .pxrow{padding:0;flex-wrap:wrap;row-gap:2px}
+.card .topR{flex:1;min-width:0;display:flex}
+.card .ai{position:relative;flex:1;min-width:0;border:1px solid ${THEME.line};border-radius:12px;
+  background:linear-gradient(180deg,#f8fbff,#eef4fc);padding:9px 12px 8px;overflow:hidden}
+.card .ai::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:${THEME.ink3}}
+.card .ai.up::before{background:${THEME.up}}
+.card .ai.down::before{background:${THEME.down}}
+.card .aiHd{display:flex;align-items:center;gap:7px;margin-bottom:7px}
+.card .aiT{font-size:11px;font-weight:700;letter-spacing:.1em;color:${THEME.ink}}
+.card .aiTag{font-size:9.5px;padding:1px 8px;border-radius:99px;font-weight:600;letter-spacing:.04em}
+.card .aiTag.pos{color:#b91c1c;background:#fee2e2}
+.card .aiTag.neg{color:#047857;background:#d1fae5}
+.card .aiTag.neu{color:${THEME.ink2};background:${THEME.lineSoft}}
+.card .aiRef{margin-left:auto;font-size:11px;width:20px;height:20px;border-radius:6px;border:1px solid ${THEME.line};background:#fff;color:${THEME.ink2};cursor:pointer;transition:all .15s;line-height:1;font-family:inherit}
+.card .aiRef:hover{color:${THEME.blue};border-color:${THEME.blue}}
+.card .aiGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.card .aiC{background:#fff;border:1px solid ${THEME.lineSoft};border-radius:8px;padding:5px 6px 6px;min-width:0}
+.card .aiLb{display:block;font-size:9.5px;color:${THEME.ink3};letter-spacing:.05em;margin-bottom:3px}
+.card .aiV{display:block;font-family:'DIN Alternate','Bahnschrift Condensed',sans-serif;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:${THEME.ink};white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .aiV.sm{font-size:11.5px}
+.card .aiV.xs{font-size:10.5px}
+.card .aiV.up{color:${THEME.up}}
+.card .aiV.down{color:${THEME.down}}
+.card .aiV.flat{color:${THEME.ink2}}
+.card .aiBar{display:block;height:4px;border-radius:99px;background:${THEME.lineSoft};margin-top:4px;overflow:hidden}
+.card .aiBar i{display:block;height:100%;border-radius:99px;background:${THEME.blue};transition:width .5s ease}
+.card .aiSum{font-size:9.5px;color:${THEME.ink3};margin-top:7px;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:620px){
+  .card .top{flex-wrap:wrap}
+  .card .topL{flex-basis:100%}
+}
 .card .hd{display:flex;align-items:flex-start;justify-content:space-between;padding:16px 18px 0}
 .card .name{font-size:17px;font-weight:700;letter-spacing:.02em;color:${THEME.ink}}
 .card .code{margin-top:3px;font-size:11px;color:${THEME.ink3};letter-spacing:.06em}
@@ -123,14 +160,18 @@ var CSS = `
 .card.flat .pctB{color:${THEME.ink2};background:${THEME.lineSoft}}
 .card .spwrap{margin:8px 16px 2px;border:1px solid ${THEME.line};border-radius:10px;background:#fbfdff;overflow:hidden}
 .card .chartbar{display:flex;align-items:center;gap:5px;padding:7px 8px;border-bottom:1px solid ${THEME.lineSoft}}
-.card .chartbar .ctitle{font-size:10px;font-weight:700;color:${THEME.ink2};margin-right:auto}
+.card .chartbar .ctitle{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:700;color:${THEME.ink2};margin-right:auto;cursor:pointer;user-select:none}
+.card .chartbar .ctitle:hover{color:${THEME.blue}}
+.card .chartbar .chev{display:inline-block;font-size:8px;font-style:normal;color:${THEME.ink3};transition:transform .25s}
+.card .spwrap.collapsed .chartbar .chev{transform:rotate(-90deg)}
+.card .spwrap.collapsed .chartwrap{display:none}
 .card .chartbar .cbtn{font-size:10px;padding:3px 7px;border:1px solid ${THEME.line};border-radius:5px;color:${THEME.ink2};background:#fff;cursor:pointer}
 .card .chartbar .cbtn.on{color:#fff;background:${THEME.blue};border-color:${THEME.blue}}
-.card .chartwrap{position:relative;height:154px;touch-action:none;cursor:crosshair}
+.card .chartwrap{position:relative;height:170px;touch-action:none;cursor:crosshair}
 .card .chartwrap canvas{display:block;width:100%;height:100%}
 .card .charttip{position:absolute;display:none;pointer-events:none;z-index:2;background:#0f172a;color:#fff;border-radius:6px;padding:5px 7px;font-size:10px;line-height:1.5;white-space:nowrap;box-shadow:0 4px 12px rgba(15,23,42,.2)}
 .card .charttip.show{display:block}
-.card .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 6px;padding:8px 16px 4px}
+.card .grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px 6px;padding:8px 16px 4px}
 .card .cell{background:#f8fafc;border:1px solid ${THEME.lineSoft};border-radius:8px;padding:6px 8px 7px}
 .card .cell .lbl{display:block;font-size:10px;color:${THEME.ink3};letter-spacing:.06em;margin-bottom:3px}
 .card .cell .val{font-family:'DIN Alternate','Bahnschrift Condensed',sans-serif;font-size:12.5px;color:${THEME.ink};font-variant-numeric:tabular-nums}
@@ -298,17 +339,33 @@ root.innerHTML += `
 </div>
 <div class="hint" id="hint">拖动移动 · 点击展开行情</div>
 <div class="card" id="card">
-  <div class="hd">
-    <div><div class="name" id="cardName">--</div><div class="code" id="cardCode">--</div></div>
-    <div class="status" id="status"><span class="dot"></span><span id="stText">连接中</span></div>
+  <div class="top">
+    <div class="topL">
+      <div class="hd">
+        <div class="nameWrap"><span class="name" id="cardName">--</span><span class="status" id="status"><span class="dot"></span><span id="stText">连接中</span></span></div>
+        <div class="code" id="cardCode">--</div>
+      </div>
+      <div class="pxrow">
+        <div class="px" id="px">--</div>
+        <div class="chg"><div class="amt" id="amt">--</div><div class="pctB" id="pctB">--</div></div>
+      </div>
+    </div>
+    <div class="topR">
+      <div class="ai" id="aiPanel">
+        <div class="aiHd"><span class="aiT">AI 智能研判</span><span class="aiTag" id="aiTag">--</span><button class="aiRef" id="aiRef" title="刷新研判">↻</button></div>
+        <div class="aiGrid">
+          <div class="aiC"><span class="aiLb">方向判断</span><b class="aiV" id="aiDir">--</b></div>
+          <div class="aiC"><span class="aiLb">上行概率</span><b class="aiV" id="aiProb">--</b><span class="aiBar"><i id="aiBar"></i></span></div>
+          <div class="aiC"><span class="aiLb" id="aiRngLb">预测区间</span><b class="aiV xs" id="aiRng">--</b></div>
+          <div class="aiC"><span class="aiLb">量化评分</span><b class="aiV sm" id="aiScore">--</b></div>
+        </div>
+        <div class="aiSum" id="aiSum">研判加载中…</div>
+      </div>
+    </div>
   </div>
   <div class="sw" id="sw"></div>
-  <div class="pxrow">
-    <div class="px" id="px">--</div>
-    <div class="chg"><div class="amt" id="amt">--</div><div class="pctB" id="pctB">--</div></div>
-  </div>
   <div class="spwrap">
-    <div class="chartbar"><span class="ctitle">K线走势</span><button class="cbtn on" data-period="intra">分时</button><button class="cbtn" data-period="day">日</button><button class="cbtn" data-period="month">月</button><button class="cbtn" data-period="year">年</button></div>
+    <div class="chartbar"><span class="ctitle" id="chartToggle"><i class="chev">▾</i>K线走势</span><button class="cbtn on" data-period="intra">分时</button><button class="cbtn" data-period="day">日</button><button class="cbtn" data-period="month">月</button><button class="cbtn" data-period="year">年</button></div>
     <div class="chartwrap" id="chartWrap"><canvas id="spark"></canvas><div class="charttip" id="chartTip"></div></div>
   </div>
   <div class="grid" id="grid"></div>
@@ -446,6 +503,8 @@ var ldEl = root.getElementById('ld');
 var srcRow = root.getElementById('srcRow');
 var spark = root.getElementById('spark');
 var chartWrap = root.getElementById('chartWrap');
+var chartToggle = root.getElementById('chartToggle');
+var spwrapEl = root.querySelector('.spwrap');
 var chartTip = root.getElementById('chartTip');
 var chartBtns = root.querySelectorAll('.cbtn');
 var chartPeriod = 'intra', chartRows = [], chartStart = 0, chartEnd = 0, chartHover = -1, chartDrag = null;
@@ -537,6 +596,16 @@ var qBars = root.getElementById('qBars');
 var qSignals = root.getElementById('qSignals');
 var qRow = root.getElementById('qRow');
 var hintEl = root.getElementById('hint');
+var aiPanel = root.getElementById('aiPanel');
+var aiTag = root.getElementById('aiTag');
+var aiDir = root.getElementById('aiDir');
+var aiProb = root.getElementById('aiProb');
+var aiBar = root.getElementById('aiBar');
+var aiRngLb = root.getElementById('aiRngLb');
+var aiRng = root.getElementById('aiRng');
+var aiScore = root.getElementById('aiScore');
+var aiSum = root.getElementById('aiSum');
+var aiRef = root.getElementById('aiRef');
 var prdDay = null, prdIntra = null, prdNews = null, prdFlow = null, prdQuant = null;
 var predictDayAt = 0, predictIntradayAt = 0, newsAt = 0, flowAt = 0, quantAt = 0;
 
@@ -577,6 +646,7 @@ function renderIdent() {
     bkRel.innerHTML = '';
     bkSum.textContent = '--';
     resetGrid();
+    renderAi();
     return;
   }
   ball.className = 'ball flat';
@@ -594,6 +664,7 @@ function renderIdent() {
   bkMid.textContent = '--';
   bkRel.innerHTML = '';
   bkSum.textContent = '--';
+  renderAi();
 }
 function resetGrid() {
   var cells = gridEl.querySelectorAll('.cell');
@@ -863,6 +934,11 @@ function requestChart(period) {
   } catch (e) { }
 }
 chartBtns.forEach(function (b) { b.addEventListener('click', function () { chartBtns.forEach(function (x) { x.classList.remove('on'); }); b.classList.add('on'); requestChart(b.dataset.period); }); });
+/* K线走势：点击标题收缩 / 展开 */
+chartToggle.addEventListener('click', function () {
+  spwrapEl.classList.toggle('collapsed');
+  if (!spwrapEl.classList.contains('collapsed')) drawSpark();
+});
 chartWrap.addEventListener('mousemove', function (e) { var r = chartWrap.getBoundingClientRect(), rows = chartVisibleRows(); if (!rows.length) return; chartHover = Math.max(0, Math.min(rows.length - 1, Math.round((e.clientX - r.left) / r.width * (rows.length - 1)))); drawSpark(); });
 chartWrap.addEventListener('mouseleave', function () { chartHover = -1; chartTip.classList.remove('show'); drawSpark(); });
 chartWrap.addEventListener('wheel', function (e) { e.preventDefault(); if (!chartRows.length) return; var span = chartEnd - chartStart, next = Math.max(20, Math.min(chartRows.length, Math.round(span * (e.deltaY > 0 ? 1.2 : .8)))); var r = chartWrap.getBoundingClientRect(), ratio = (e.clientX - r.left) / r.width, anchor = chartStart + Math.round(span * ratio); chartStart = Math.max(0, Math.min(chartRows.length - next, anchor - Math.round(next * ratio))); chartEnd = chartStart + next; drawSpark(); }, { passive: false });
@@ -1248,6 +1324,66 @@ function renderNews(n) {
     nList.appendChild(d);
   });
 }
+/* 顶部「AI 智能研判」：方向 / 上行概率 / 预测区间 / 量化评分 汇总 */
+function renderAi() {
+  if (!cfg) {
+    aiDir.textContent = '--'; aiDir.className = 'aiV flat';
+    aiProb.textContent = '--'; aiProb.style.color = '';
+    aiBar.style.width = '0%';
+    aiRngLb.textContent = '预测区间'; aiRng.textContent = '--';
+    aiScore.textContent = '--'; aiScore.style.color = '';
+    aiTag.textContent = '--'; aiTag.className = 'aiTag neu';
+    aiSum.textContent = '未配置';
+    aiPanel.className = 'ai';
+    return;
+  }
+  var i = prdIntra, d = prdDay, q = prdQuant;
+  var dir = i ? i.dir : (d ? d.dir : 'flat');
+  var dirTxt = i ? i.dirTxt : (d ? d.dirTxt : '--');
+  aiDir.textContent = dirTxt;
+  aiDir.className = 'aiV ' + dir;
+  aiPanel.className = 'ai' + (dir === 'up' ? ' up' : (dir === 'down' ? ' down' : ''));
+  var prob = i ? i.probUp : (d ? d.probUp : null);
+  if (prob != null) {
+    var pp = Math.round(prob * 100);
+    aiProb.textContent = pp + '%';
+    aiProb.style.color = prob >= 0.56 ? THEME.up : (prob <= 0.44 ? THEME.down : THEME.ink);
+    aiBar.style.width = pp + '%';
+    aiBar.style.background = prob >= 0.56 ? THEME.up : (prob <= 0.44 ? THEME.down : THEME.blue);
+  } else {
+    aiProb.textContent = '--'; aiProb.style.color = '';
+    aiBar.style.width = '0%';
+  }
+  if (i && i.intraLow != null && i.intraHigh != null) {
+    aiRngLb.textContent = '实时区间';
+    aiRng.textContent = fmtP(i.intraLow) + '~' + fmtP(i.intraHigh);
+  } else if (d && d.nextLow != null && d.nextHigh != null) {
+    aiRngLb.textContent = '次日区间';
+    aiRng.textContent = fmtP(d.nextLow) + '~' + fmtP(d.nextHigh);
+  } else {
+    aiRngLb.textContent = '预测区间';
+    aiRng.textContent = '--';
+  }
+  var lv = null;
+  if (q && q.score != null) lv = q.score >= 60 ? '偏多' : (q.score <= 40 ? '偏空' : '中性');
+  else if (i || d) lv = dirTxt;
+  if (q && q.score != null) {
+    aiScore.textContent = q.score + ' · ' + (q.level || lv);
+    aiScore.style.color = q.score >= 60 ? THEME.up : (q.score <= 40 ? THEME.down : THEME.ink);
+  } else {
+    aiScore.textContent = '--'; aiScore.style.color = '';
+  }
+  aiTag.textContent = lv || '--';
+  aiTag.className = 'aiTag ' + (lv === '偏多' ? 'pos' : (lv === '偏空' ? 'neg' : 'neu'));
+  var parts = [];
+  if (i) parts.push(i.dirTxt);
+  if (prob != null) parts.push('上行概率 ' + Math.round(prob * 100) + '%');
+  if (d && d.nextLow != null) {
+    parts.push('次日 ' + fmtP(d.nextLow) + '~' + fmtP(d.nextHigh));
+    if (d.confidence != null) parts.push('置信 ' + d.confidence + '%');
+  }
+  aiSum.textContent = parts.length ? parts.join(' · ') : '研判加载中…';
+}
 function renderSum() {
   var parts = [];
   if (prdIntra) parts.push(prdIntra.dirTxt);
@@ -1255,6 +1391,7 @@ function renderSum() {
   if (prdNews && prdNews.total) parts.push('资讯' + prdNews.total + '条');
   if (prdQuant && prdQuant.score != null) parts.push('量化 ' + prdQuant.score + '分');
   prdSum.textContent = parts.length ? parts.join(' · ') : '--';
+  renderAi();
 }
 
 /* ================= 盘口：五档 + 大盘指数 + 相关板块 ================= */
@@ -1316,6 +1453,7 @@ prdBar.addEventListener('click', function () {
   prd.classList.toggle('open');
   if (prd.classList.contains('open')) refreshPredict(true);
 });
+aiRef.addEventListener('click', function () { refreshPredict(true); });
 bkBar.addEventListener('click', function () {
   bk.classList.toggle('open');
   if (bk.classList.contains('open')) requestBoard(true);
@@ -1407,7 +1545,7 @@ function renderBallHold() {
     return;
   }
   var s = holdData.sum;
-  ballHold.textContent = '仓 ' + fmtHoldMoney(s.pl);
+  ballHold.textContent = fmtHoldMoney(s.pl);
   ballHold.className = 'hold on ' + holdCls(s.pl);
   ball.title = '总市值 ' + fmtHoldMoney(s.mv) + ' · 当日盈亏 ' + fmtHoldMoney(s.dayPl);
 }
