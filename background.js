@@ -3,6 +3,56 @@
  * 2) search：腾讯智能搜索，按名称/代码查股票候选 */
 'use strict';
 
+/* 引入公共配置（告警/量化默认值等单一来源），MV3 SW 同步加载 */
+try { importScripts('config.js'); } catch (e) { console.error('config.js import failed', e); }
+
+/* 统一请求超时：包装全局 fetch，避免接口挂起导致 Promise 永久 pending / SW 任务堆积 */
+(function () {
+  var _fetch = self.fetch.bind(self);
+  self.fetch = function (url, opts) {
+    var ctrl = new AbortController();
+    var timer = setTimeout(function () { ctrl.abort(); }, 9000);
+    return _fetch(url, Object.assign({}, opts || {}, { signal: ctrl.signal }))
+      .then(function (r) { clearTimeout(timer); return r; },
+            function (e) { clearTimeout(timer); throw e; });
+  };
+})();
+
+/* 美股（纽约）本地时钟：自动适配夏令时，用于交易时段判断 */
+function nyNow() {
+  try {
+    var parts = {};
+    new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false })
+      .formatToParts(new Date()).forEach(function (p) { parts[p.type] = p.value; });
+    var wd = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[parts.weekday];
+    if (wd == null) return null;
+    return { day: wd, mins: ((+parts.hour) % 24) * 60 + (+parts.minute) };
+  } catch (e) { return null; }
+}
+
+/* 消息参数校验：market 白名单 + code 字符集（防止非法输入驱动请求/污染 URL） */
+function validCfg(c) {
+  return !!(c && typeof c === 'object' &&
+    /^(sh|sz|bj|hk|us|sg)$/.test(c.market) &&
+    /^[0-9A-Za-z.]+$/.test(String(c.code || '')) && String(c.code).length <= 12);
+}
+
+/* 并发限制：按 limit 并行执行任务数组，fn 返回 Promise */
+function mapLimit(items, limit, fn) {
+  var i = 0, n = items.length, done = 0;
+  return new Promise(function (resolve) {
+    if (!n) { resolve(); return; }
+    function worker() {
+      if (i >= n) return;
+      var idx = i++;
+      Promise.resolve().then(function () { return fn(items[idx], idx); })
+        .then(function () { done++; if (done >= n) resolve(); else worker(); },
+              function () { done++; if (done >= n) resolve(); else worker(); });
+    }
+    for (var k = 0; k < Math.min(limit, n); k++) worker();
+  });
+}
+
 var TX_SEARCH = 'https://smartbox.gtimg.cn/s3/?v=2&q=';
 var EM_API = 'https://push2.eastmoney.com/api/qt/stock/get';
 var KLINE_API = 'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=';
@@ -301,176 +351,220 @@ function searchStock(q) {
 }
 
 chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
-  if (!msg) return;
-  if (msg.type === 'quote') {
-    var cfg = msg.cfg;
-    if (!cfg || !cfg.market || !cfg.code) {
-      sendResponse({ ok: false, error: 'missing cfg' });
-      return true;
-    }
-    /* 上金所现货无腾讯源，直接走东财 */
-    var p;
-    if (cfg.market === 'sg') {
-      p = fetchEM(cfg).then(function (d) { return { data: d, source: 'em' }; });
-    } else {
-      p = fetchTencent(cfg).then(function (d) { return { data: d, source: 'tx' }; })
-        .catch(function () {
-          return fetchEM(cfg).then(function (d) { return { data: d, source: 'em' }; });
-        });
-    }
-    p.then(function (r) { sendResponse({ ok: true, data: r.data, source: r.source }); })
-      .catch(function (e) { sendResponse({ ok: false, error: String((e && e.message) || e) }); });
-    return true;
-  }
-  if (msg.type === 'search') {
-    searchStock(msg.q)
-      .then(function (list) { sendResponse({ ok: true, list: list }); })
-      .catch(function (e) { sendResponse({ ok: false, error: String((e && e.message) || e) }); });
-    return true;
-  }
-  if (msg.type === 'chart') {
-    var ccfg = msg.cfg;
-    var period = msg.period || 'day';
-    if (!ccfg || !ccfg.market || !ccfg.code) {
-      sendResponse({ ok: false, error: 'missing cfg' });
-      return true;
-    }
-    fetchChart(ccfg, period)
-      .then(function (rows) { sendResponse({ ok: true, data: rows, period: period }); })
-      .catch(function (e) { sendResponse({ ok: false, error: String((e && e.message) || e) }); });
-    return true;
-  }
-  if (msg.type === 'predict') {
-    var pcfg = msg.cfg;
-    if (!pcfg || !pcfg.market || !pcfg.code) {
-      sendResponse({ ok: false, error: 'missing cfg' });
-      return true;
-    }
-    fetchKline(pcfg, 120)
-      .then(function (rows) {
-        if (msg.mode === 'intraday') {
-          return predictIntraday(pcfg, msg.quote || {}, rows, msg.recent || []);
-        }
-        return predictDay(pcfg, rows);
-      })
-      .then(function (d) { sendResponse({ ok: true, data: d }); })
-      .catch(function (e) { sendResponse({ ok: false, error: String((e && e.message) || e) }); });
-    return true;
-  }
-  if (msg.type === 'news') {
-    var ncfg = msg.cfg;
-    if (!ncfg || !ncfg.market || !ncfg.code) {
-      sendResponse({ ok: false, error: 'missing cfg' });
-      return true;
-    }
-    fetchHotNews(ncfg, !!msg.force)
-      .then(function (d) { sendResponse({ ok: true, data: d }); })
-      .catch(function (e) { sendResponse({ ok: false, error: String((e && e.message) || e) }); });
-    return true;
-  }
-  if (msg.type === 'flow') {
-    var fcfg = msg.cfg;
-    if (!fcfg || !fcfg.market || !fcfg.code) {
-      sendResponse({ ok: false, error: 'missing cfg' });
-      return true;
-    }
-    flowPayload(fcfg, !!msg.force)
-      .then(function (d) { sendResponse({ ok: true, data: d }); })
-      .catch(function (e) { sendResponse({ ok: false, error: String((e && e.message) || e) }); });
-    return true;
-  }
-  if (msg.type === 'quant') {
-    var qcfg = msg.cfg;
-    if (!qcfg || !qcfg.market || !qcfg.code) {
-      sendResponse({ ok: false, error: 'missing cfg' });
-      return true;
-    }
-    quantPayload(qcfg, msg.quote || {}, msg.recent || [])
-      .then(function (d) { sendResponse({ ok: true, data: d }); })
-      .catch(function (e) { sendResponse({ ok: false, error: String((e && e.message) || e) }); });
-    return true;
-  }
-  if (msg.type === 'board') {
-    var bcfg = msg.cfg;
-    if (!bcfg || !bcfg.market || !bcfg.code) {
-      sendResponse({ ok: false, error: 'missing cfg' });
-      return true;
-    }
-    Promise.all([
-      fetchIndices(bcfg.market).catch(function () { return []; }),
-      fetchBoards(bcfg).catch(function () { return []; })
-    ]).then(function (res) {
-      sendResponse({ ok: true, indices: res[0], boards: res[1] });
-    });
-    return true;
-  }
-  if (msg.type === 'holdings') {
-    fetchHoldings()
-      .then(function (d) { sendResponse({ ok: true, items: d.items, sum: d.sum, t: Date.now() }); })
-      .catch(function (e) { sendResponse({ ok: false, error: String((e && e.message) || e) }); });
-    return true;
-  }
-  if (msg.type === 'openOptions') {
-    try { chrome.runtime.openOptionsPage(); } catch (e) { }
-    sendResponse({ ok: true });
-    return true;
-  }
-  if (msg.type === 'larkTest') {
-    loadAlertCfg(function (cfg) {
-      if (!cfg.larkUrl) {
-        sendResponse({ ok: false, error: '未配置飞书 Webhook 地址' });
-        return;
+  /* safe：保证只响应一次，且异常路径必然回包，避免调用方永久挂起 */
+  var responded = false;
+  var safe = function (obj) {
+    if (responded) return;
+    responded = true;
+    try { sendResponse(obj); } catch (e) { }
+  };
+  try {
+    if (!msg || typeof msg !== 'object') { safe({ ok: false, error: 'bad message' }); return false; }
+    if (msg.type === 'quote') {
+      var cfg = msg.cfg;
+      if (!validCfg(cfg)) { safe({ ok: false, error: 'invalid cfg' }); return false; }
+      /* 上金所现货无腾讯源，直接走东财 */
+      var p;
+      if (cfg.market === 'sg') {
+        p = fetchEM(cfg).then(function (d) { return { data: d, source: 'em' }; });
+      } else {
+        p = fetchTencent(cfg).then(function (d) { return { data: d, source: 'tx' }; })
+          .catch(function () {
+            return fetchEM(cfg).then(function (d) { return { data: d, source: 'em' }; });
+          });
       }
-      var card = buildLarkCard(
-        { market: 'sh', code: '000001', name: '测试股票' },
-        { price: 10.25, pct: 3.5 },
-        1.9, 'upVol',
-        { nextLow: 10.10, nextHigh: 10.60, probUp: 0.68 },
-        '实时股价悬浮球 · 异动提醒测试消息\n（信号命中时将自动推送，冷却 ' + cfg.cd + ' 分钟）'
-      );
-      pushLark(cfg.larkUrl, card)
-        .then(function () { sendResponse({ ok: true }); })
-        .catch(function (e) { sendResponse({ ok: false, error: String((e && e.message) || e) }); });
-    });
-    return true;
+      p.then(function (r) { safe({ ok: true, data: r.data, source: r.source }); })
+        .catch(function (e) { safe({ ok: false, error: String((e && e.message) || e) }); });
+      return true;
+    }
+    if (msg.type === 'search') {
+      var q = String(msg.q || '').trim().slice(0, 30);
+      if (!q) { safe({ ok: false, error: 'empty query' }); return false; }
+      searchStock(q)
+        .then(function (list) { safe({ ok: true, list: list }); })
+        .catch(function (e) { safe({ ok: false, error: String((e && e.message) || e) }); });
+      return true;
+    }
+    if (msg.type === 'chart') {
+      var ccfg = msg.cfg;
+      var period = msg.period || 'day';
+      if (!validCfg(ccfg)) { safe({ ok: false, error: 'invalid cfg' }); return false; }
+      fetchChart(ccfg, period)
+        .then(function (rows) { safe({ ok: true, data: rows, period: period }); })
+        .catch(function (e) { safe({ ok: false, error: String((e && e.message) || e) }); });
+      return true;
+    }
+    if (msg.type === 'predict') {
+      var pcfg = msg.cfg;
+      if (!validCfg(pcfg)) { safe({ ok: false, error: 'invalid cfg' }); return false; }
+      fetchKline(pcfg, 120)
+        .then(function (rows) {
+          if (msg.mode === 'intraday') {
+            return predictIntraday(pcfg, msg.quote || {}, rows, msg.recent || []);
+          }
+          return predictDay(pcfg, rows);
+        })
+        .then(function (d) { safe({ ok: true, data: d }); })
+        .catch(function (e) { safe({ ok: false, error: String((e && e.message) || e) }); });
+      return true;
+    }
+    if (msg.type === 'news') {
+      var ncfg = msg.cfg;
+      if (!validCfg(ncfg)) { safe({ ok: false, error: 'invalid cfg' }); return false; }
+      fetchHotNews(ncfg, !!msg.force)
+        .then(function (d) { safe({ ok: true, data: d }); })
+        .catch(function (e) { safe({ ok: false, error: String((e && e.message) || e) }); });
+      return true;
+    }
+    if (msg.type === 'flow') {
+      var fcfg = msg.cfg;
+      if (!validCfg(fcfg)) { safe({ ok: false, error: 'invalid cfg' }); return false; }
+      flowPayload(fcfg, !!msg.force)
+        .then(function (d) { safe({ ok: true, data: d }); })
+        .catch(function (e) { safe({ ok: false, error: String((e && e.message) || e) }); });
+      return true;
+    }
+    if (msg.type === 'quant') {
+      var qcfg = msg.cfg;
+      if (!validCfg(qcfg)) { safe({ ok: false, error: 'invalid cfg' }); return false; }
+      quantPayload(qcfg, msg.quote || {}, msg.recent || [])
+        .then(function (d) { safe({ ok: true, data: d }); })
+        .catch(function (e) { safe({ ok: false, error: String((e && e.message) || e) }); });
+      return true;
+    }
+    if (msg.type === 'board') {
+      var bcfg = msg.cfg;
+      if (!validCfg(bcfg)) { safe({ ok: false, error: 'invalid cfg' }); return false; }
+      Promise.all([
+        fetchIndices(bcfg.market).catch(function () { return []; }),
+        fetchBoards(bcfg).catch(function () { return []; })
+      ]).then(function (res) {
+        safe({ ok: true, indices: res[0], boards: res[1] });
+      });
+      return true;
+    }
+    if (msg.type === 'holdings') {
+      fetchHoldings()
+        .then(function (d) { safe({ ok: true, items: d.items, sum: d.sum, t: Date.now() }); })
+        .catch(function (e) { safe({ ok: false, error: String((e && e.message) || e) }); });
+      return true;
+    }
+    if (msg.type === 'openOptions') {
+      try { chrome.runtime.openOptionsPage(); } catch (e) { }
+      safe({ ok: true });
+      return false;
+    }
+    if (msg.type === 'larkTest') {
+      loadAlertCfg(function (acfg) {
+        if (!acfg.larkUrl) {
+          safe({ ok: false, error: '未配置飞书 Webhook 地址' });
+          return;
+        }
+        var card = buildLarkCard(
+          { market: 'sh', code: '000001', name: '测试股票' },
+          { price: 10.25, pct: 3.5 },
+          1.9, 'upVol',
+          { nextLow: 10.10, nextHigh: 10.60, probUp: 0.68 },
+          '实时股价悬浮球 · 异动提醒测试消息\n（信号命中时将自动推送，冷却 ' + acfg.cd + ' 分钟）'
+        );
+        pushLark(acfg.larkUrl, card)
+          .then(function () { safe({ ok: true }); })
+          .catch(function (e) { safe({ ok: false, error: String((e && e.message) || e) }); });
+      });
+      return true;
+    }
+    safe({ ok: false, error: 'unknown message type' });
+    return false;
+  } catch (e) {
+    safe({ ok: false, error: 'handler error: ' + String((e && e.message) || e) });
+    return false;
   }
 });
 
 /* ================= 预测：技术指标库 ================= */
 var KLINE_CACHE = {};
 var KLINE_TTL = 5 * 60 * 1000;
+var KLINE_SESSION_KEY = 'chhKlineCache';
+/* K线缓存 L1=内存（SW 存活期）、L2=session storage（SW 休眠重启后仍有效），避免每轮 alarm 全量重拉 */
+function klineCacheGet(key) {
+  var c = KLINE_CACHE[key];
+  if (c && Date.now() - c.t < KLINE_TTL) return Promise.resolve(c.rows);
+  return new Promise(function (resolve) {
+    try {
+      chrome.storage.session.get(KLINE_SESSION_KEY, function (o) {
+        var m = (o && o[KLINE_SESSION_KEY]) || {};
+        var c2 = m[key];
+        if (c2 && Array.isArray(c2.rows) && Date.now() - c2.t < KLINE_TTL) {
+          KLINE_CACHE[key] = c2;
+          resolve(c2.rows);
+        } else resolve(null);
+      });
+    } catch (e) { resolve(null); }
+  });
+}
+function klineCacheSet(key, rows) {
+  KLINE_CACHE[key] = { t: Date.now(), rows: rows };
+  try {
+    chrome.storage.session.get(KLINE_SESSION_KEY, function (o) {
+      var m = (o && o[KLINE_SESSION_KEY]) || {};
+      m[key] = { t: Date.now(), rows: rows };
+      /* 限制条目数，避免超配额 */
+      var ks = Object.keys(m);
+      if (ks.length > 60) {
+        ks.sort(function (a, b) { return m[a].t - m[b].t; });
+        for (var i = 0; i < ks.length - 60; i++) delete m[ks[i]];
+      }
+      var o2 = {};
+      o2[KLINE_SESSION_KEY] = m;
+      try { chrome.storage.session.set(o2); } catch (e2) { }
+    });
+  } catch (e) { }
+}
 function fetchKline(cfg, days) {
   var q = txQueryCode(cfg);
   var key = q + ':' + days;
-  var c = KLINE_CACHE[key];
-  if (c && Date.now() - c.t < KLINE_TTL) return Promise.resolve(c.rows);
-  var p;
-  if (cfg.market === 'sg') {
-    /* 上金所现货：腾讯无K线，走东财日K（列位与腾讯一致：[日期,开,收,高,低,量,额]） */
-    var url = EM_KLINE_API + '?secid=' + emSecid(cfg) +
-      '&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58&klt=101&fqt=0&end=20500101&lmt=' + days + '&_=' + Date.now();
-    p = fetch(url, { cache: 'no-store' })
-      .then(function (r) { return r.json(); })
-      .then(function (json) {
-        var kl = (json && json.data && Array.isArray(json.data.klines)) ? json.data.klines : [];
-        var rows = kl.map(function (s) { return s.split(','); });
-        if (rows.length < 30) throw new Error('kline insufficient');
-        KLINE_CACHE[key] = { t: Date.now(), rows: rows };
-        return rows;
-      });
-  } else {
-    var url = KLINE_API + q + ',day,,,' + days + ',qfq';
-    p = fetch(url, { cache: 'no-store' })
+  return klineCacheGet(key).then(function (cached) {
+    if (cached) return cached;
+    if (cfg.market === 'sg') {
+      /* 上金所现货：腾讯无K线，走东财日K（列位与腾讯一致：[日期,开,收,高,低,量,额]） */
+      var url = EM_KLINE_API + '?secid=' + emSecid(cfg) +
+        '&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58&klt=101&fqt=0&end=20500101&lmt=' + days + '&_=' + Date.now();
+      return fetch(url, { cache: 'no-store' })
+        .then(function (r) { return r.json(); })
+        .then(function (json) {
+          var kl = (json && json.data && Array.isArray(json.data.klines)) ? json.data.klines : [];
+          var rows = kl.map(function (s) { return s.split(','); });
+          if (rows.length < 30) throw new Error('kline insufficient');
+          klineCacheSet(key, rows);
+          return rows;
+        });
+    }
+    return fetch(KLINE_API + q + ',day,,,' + days + ',qfq', { cache: 'no-store' })
       .then(function (r) { return r.json(); })
       .then(function (json) {
         var node = json && json.data && json.data[q];
         var rows = (node && (node.qfqday || node.day)) || [];
         if (rows.length < 30) throw new Error('kline insufficient');
-        KLINE_CACHE[key] = { t: Date.now(), rows: rows };
+        klineCacheSet(key, rows);
         return rows;
+      })
+      .catch(function (txErr) {
+        /* 腾讯K线失败：A股/上金所降级东财日K（列位一致：[日期,开,收,高,低,量,额]） */
+        var secid = emSecid(cfg);
+        if (!secid) throw txErr;
+        var emUrl = EM_KLINE_API + '?secid=' + secid +
+          '&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58&klt=101&fqt=1&end=20500101&lmt=' + days + '&_=' + Date.now();
+        return fetch(emUrl, { cache: 'no-store' })
+          .then(function (r) { return r.json(); })
+          .then(function (json) {
+            var kl = (json && json.data && Array.isArray(json.data.klines)) ? json.data.klines : [];
+            var rows = kl.map(function (s) { return s.split(','); });
+            if (rows.length < 30) throw new Error('em kline insufficient');
+            klineCacheSet(key, rows);
+            return rows;
+          });
       });
-  }
-  return p;
+  });
 }
 
 /* 历史K线：支持分时、日、月、年，统一返回 [时间,开,收,高,低,量] */
@@ -597,23 +691,26 @@ function calcRetStats(closes, m) {
   var sd = Math.sqrt(rets.reduce(function (a, b) { return a + (b - mean) * (b - mean); }, 0) / (rets.length - 1));
   return { mean: mean, sd: sd };
 }
-/* 各市场交易时钟：返回当日已进行占比 */
+/* 各市场交易时钟：返回当日已进行占比（美股按纽约时区，自动适配夏令时） */
 function marketClock(market) {
   var now = new Date();
   var day = now.getDay();
   var m = now.getHours() * 60 + now.getMinutes();
-  if (day === 0 || day === 6) return { frac: 1, live: false };
   if (market === 'hk') {
+    if (day === 0 || day === 6) return { frac: 1, live: false };
     var e1 = Math.max(0, Math.min(150, m - 570));
     var e2 = Math.max(0, Math.min(180, m - 780));
     var t = e1 + e2;
     return { frac: clamp(t / 330, 0, 1), live: t > 0 && t < 330 };
   }
   if (market === 'us') {
-    var base = m >= 1290 ? m - 1290 : m + 1440 - 1290;
+    var ny = nyNow();
+    if (!ny || ny.day < 1 || ny.day > 5) return { frac: 1, live: false };
+    var base = ny.mins >= 570 ? ny.mins - 570 : ny.mins + 1440 - 570;
     var tu = clamp(base, 0, 390);
     return { frac: tu / 390, live: tu > 0 && tu < 390 };
   }
+  if (day === 0 || day === 6) return { frac: 1, live: false };
   var a1 = Math.max(0, Math.min(120, m - 570));
   var a2 = Math.max(0, Math.min(120, m - 780));
   var ta = a1 + a2;
@@ -632,8 +729,10 @@ function fetchIndex(market) {
   var c = IDX_CACHE[code];
   if (c && Date.now() - c.t < IDX_TTL) return Promise.resolve(c.data);
   return fetch('https://qt.gtimg.cn/q=' + code + '&_=' + Date.now(), { cache: 'no-store' })
-    .then(function (r) { return r.text(); })
-    .then(function (txt) {
+    .then(function (r) { return r.arrayBuffer(); })
+    .then(function (buf) {
+      /* 腾讯接口返回 GBK，需显式解码，否则指数名称乱码 */
+      var txt = new TextDecoder('gbk').decode(buf);
       var m = txt.match(/="([^"]*)"/);
       if (!m || !m[1]) throw new Error('no idx');
       var p = m[1].split('~');
@@ -777,6 +876,7 @@ function calibrateProb(closes, highs, lows, vols, curScore) {
 
 /* ================= 预测命中率追踪（跨会话） ================= */
 var TRACK_KEY = 'chhPredTrack';
+var trackQueue = Promise.resolve(); /* 串行化读改写，避免并发覆盖 */
 function loadTrack(cb) {
   try { chrome.storage.local.get(TRACK_KEY, function (o) { cb((o && Array.isArray(o[TRACK_KEY])) ? o[TRACK_KEY] : []); }); }
   catch (e) { cb([]); }
@@ -789,22 +889,28 @@ function updateTracking(rows, stats, cb) {
   var actual = +rows[pi][2], prevC = +rows[pi - 1][2];
   var up = actual > prevC, dn = actual < prevC;
   var outcome = up ? 'up' : (dn ? 'down' : 'flat');
-  loadTrack(function (track) {
-    for (var i = 0; i < track.length; i++) {
-      if (track[i].date === outcomeDate && track[i].outcome == null) {
-        track[i].outcome = outcome;
-        track[i].close = actual;
-      }
-    }
-    var has = track.some(function (t) { return t.date === lastDate; });
-    if (!has && stats) track.push({ date: lastDate, dir: stats.dir, probUp: stats.probUp });
-    while (track.length > 40) track.shift();
-    var done = track.filter(function (t) { return t.outcome && t.dir && t.dir !== 'flat'; });
-    var hits = done.filter(function (t) { return t.outcome === t.dir; }).length;
-    var out = { hitRate: done.length ? Math.round(hits / done.length * 100) : null, trackN: done.length };
-    try { chrome.storage.local.set({ chhPredTrack: track }, function () { cb(out); }); }
-    catch (e) { cb(out); }
-  });
+  trackQueue = trackQueue.then(function () {
+    return new Promise(function (resolve) {
+      loadTrack(function (track) {
+        var changed = false;
+        for (var i = 0; i < track.length; i++) {
+          if (track[i].date === outcomeDate && track[i].outcome == null) {
+            track[i].outcome = outcome;
+            track[i].close = actual;
+            changed = true;
+          }
+        }
+        var has = track.some(function (t) { return t.date === lastDate; });
+        if (!has && stats) { track.push({ date: lastDate, dir: stats.dir, probUp: stats.probUp }); changed = true; }
+        while (track.length > 40) track.shift();
+        var done = track.filter(function (t) { return t.outcome && t.dir && t.dir !== 'flat'; });
+        var hits = done.filter(function (t) { return t.outcome === t.dir; }).length;
+        var out = { hitRate: done.length ? Math.round(hits / done.length * 100) : null, trackN: done.length };
+        if (!changed) { resolve(); cb(out); return; }
+        chrome.storage.local.set({ chhPredTrack: track }, function () { resolve(); cb(out); });
+      });
+    });
+  }).catch(function () { cb({ hitRate: null, trackN: 0 }); });
 }
 
 /* ================= 预测：次日（基于日K统计 + 回测校准） ================= */
@@ -950,7 +1056,8 @@ function predictIntraday(cfg, quote, rows, recent) {
       var sf = (cfg.market === 'hk' || cfg.market === 'us') ? 1 : 100;
       if (minute.cumAmt > 0 && minute.cumVol > 0) minuteVwap = minute.cumAmt / (minute.cumVol * sf);
       var i30 = Math.max(0, pts.length - 31);
-      mom30 = (pts[pts.length - 1].p / pts[i30].p - 1) * 100;
+      var p0 = pts[i30].p;
+      mom30 = (p0 > 0) ? (pts[pts.length - 1].p / p0 - 1) * 100 : 0;
       mn = pts[0].p; mx = pts[0].p;
       for (var i = 1; i < pts.length; i++) {
         if (pts[i].p < mn) mn = pts[i].p;
@@ -959,6 +1066,7 @@ function predictIntraday(cfg, quote, rows, recent) {
     }
     var shares = (cfg.market === 'hk' || cfg.market === 'us') ? volHand : volHand * 100;
     var vwap = minuteVwap != null ? minuteVwap : ((shares > 0 && amtYuan > 0) ? amtYuan / shares : price);
+    if (!(vwap > 0)) vwap = price;
     var aboveVwap = price >= vwap;
 
     var dayLow = mn != null ? mn : low;
@@ -967,7 +1075,7 @@ function predictIntraday(cfg, quote, rows, recent) {
     var closePosNow = clamp((price - dayLow) / dayRange, 0, 1);
 
     var mom = 0;
-    if (mom30 !== 0) mom = mom30;
+    if (minute && minute.pts && minute.pts.length > 5) mom = mom30; /* 分时动量（含恰好为 0 的真实信号） */
     else if (recent && recent.length >= 2) mom = (recent[recent.length - 1] / recent[0] - 1) * 100;
     else if (open > 0) mom = (price / open - 1) * 100;
 
@@ -982,6 +1090,7 @@ function predictIntraday(cfg, quote, rows, recent) {
 
     var posScore = (aboveVwap ? 1 : 0) + (closePosNow > 0.62 ? 1 : 0) + (mom > 0.15 ? 1 : 0) + (volRatio > 1.05 ? 1 : 0);
     var strength = clamp(50 + posScore * 9 + (price - vwap) / vwap * 100 * 6 + mom * 4 + (volRatio - 1) * 12 + (idx && isFinite(idx.pct) ? idx.pct * 4 : 0), 6, 94);
+    if (!isFinite(strength)) strength = 50;
     var probUp = clamp(0.5 + (posScore - 2) * 0.12, 0.15, 0.85);
     probUp = clamp(probUp * 0.65 + (prior ? prior.probUp : 0.5) * 0.35, 0.1, 0.9); /* 融合次日预测先验 */
     if (idx && isFinite(idx.pct)) probUp = clamp(probUp + idx.pct * 0.004, 0.1, 0.9);
@@ -1031,10 +1140,11 @@ function fetchFlowRaw(cfg, lmt) {
       if (!klines.length) throw new Error('no flow');
       return klines.map(function (s) {
         var f = String(s).split(',');
+        function n(v) { return isFinite(+v) ? +v : 0; }
         return {
           date: f[0] || '',
-          mainNet: +f[1], smallNet: +f[2], midNet: +f[3], bigNet: +f[4], superNet: +f[5],
-          mainPct: +f[6], close: +f[11], chgPct: +f[12]
+          mainNet: n(f[1]), smallNet: n(f[2]), midNet: n(f[3]), bigNet: n(f[4]), superNet: n(f[5]),
+          mainPct: n(f[6]), close: n(f[11]), chgPct: n(f[12])
         };
       });
     });
@@ -1073,9 +1183,9 @@ function computeFlowSignal(list, intra) {
   var today = intra || list[list.length - 1];
   var todayStr = fmtToday();
   var hist = list.filter(function (x) { return x.date < todayStr; }).slice(-4);
-  var sum5 = today.mainNet + hist.reduce(function (s, x) { return s + x.mainNet; }, 0);
-  var seq = [today.mainNet];
-  for (var i = list.length - 1; i >= 0; i--) seq.push(list[i].mainNet);
+  var sum5 = (isFinite(today.mainNet) ? today.mainNet : 0) + hist.reduce(function (s, x) { return s + (isFinite(x.mainNet) ? x.mainNet : 0); }, 0);
+  var seq = [isFinite(today.mainNet) ? today.mainNet : 0];
+  for (var i = list.length - 1; i >= 0; i--) seq.push(isFinite(list[i].mainNet) ? list[i].mainNet : 0);
   var sign = seq[0] >= 0 ? 1 : -1, streak = 0;
   for (var k = 0; k < seq.length; k++) {
     if ((seq[k] >= 0 ? 1 : -1) === sign) streak++; else break;
@@ -1112,6 +1222,9 @@ function fetchLhb(cfg, force) {
           sellAmt: +it.BILLBOARD_SELL_AMT || 0,
           chgPct: +it.CHANGE_RATE || null
         };
+      }).filter(function (x) {
+        /* 只保留近 10 个自然日内的上榜记录，避免陈旧榜单驱动当日信号 */
+        return x.date >= new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString().slice(0, 10);
       });
       LHB_CACHE[key] = { t: Date.now(), data: data };
       return data;
@@ -1290,7 +1403,6 @@ function fetchHotNews(cfg, force) {
  * 改进点：趋势分解为均线/MACD/RSI/KDJ/ADX 子信号；资金纳入 5 日累计/连续流向/龙虎榜；
  * 量价纳入 VWAP/动量/量比/日内位置；估值用对数平滑代替硬分档；
  * 新增 signals（可读信号）与 warnings（风险提示）供前端展示。仅供技术参考，不构成投资建议。 */
-var QUANT_DEFAULTS = { on: true, wTrend: 30, wFund: 30, wVol: 20, wNews: 10, wValue: 10 };
 function loadQuantCfg(cb) {
   chrome.storage.local.get('chhQuant', function (o) {
     cb(Object.assign({}, QUANT_DEFAULTS, (o && o.chhQuant) || {}));
@@ -1300,7 +1412,6 @@ function saveQuantCfg(cfg, cb) {
   chrome.storage.local.set({ chhQuant: cfg }, cb || function () {});
 }
 function clamp01(v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
-function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 /* ---- 趋势因子：分解子信号 ----
  * 均线排列(0.25) + MACD(0.20) + RSI(0.15) + KDJ(0.10) + 价格vs均线(0.20) + ADX趋势确认(0.10) */
 function trendFactor(stats, signals) {
@@ -1491,17 +1602,22 @@ function quantPayload(cfg, quote, recent) {
         fetchHotNews(cfg, false).catch(function () { return null; })
       ]).then(function (res) {
         var rows = res[0], flowData = res[1], news = res[2];
-        if (!rows) { reject(new Error('K线数据获取失败')); return; }
+        var klineErr = !rows || rows.length < 30;
         var stats = null;
-        try { stats = computeDayStats(cfg, rows, null); } catch (e) { }
-        predictIntraday(cfg, quote || {}, rows, recent || []).then(function (intra) {
+        if (!klineErr) { try { stats = computeDayStats(cfg, rows, null); } catch (e) { } }
+        /* K线失败时趋势/量价因子按中性处理，其余因子照常计算，避免整面板不可用 */
+        var intraPromise = klineErr
+          ? Promise.resolve(null)
+          : predictIntraday(cfg, quote || {}, rows, recent || []);
+        intraPromise.then(function (intra) {
           var signals = [];
           var fTrend = trendFactor(stats, signals);
           var fFund = fundFactor(flowData ? flowData.flow : null, flowData ? flowData.lhb : [], signals);
-          var fVol = volFactor(intra, signals);
+          var fVol = intra ? volFactor(intra, signals) : 0.5;
           var fNews = newsFactor(news, signals);
           var fValue = valueFactor(quote, signals);
-          var warnings = buildWarnings(stats, intra, quote);
+          var warnings = (klineErr ? ['K线数据获取失败，趋势/量价因子按中性处理'] : [])
+            .concat(buildWarnings(stats, intra, quote));
           var wSum = wT + wF + wV + wN + wVal;
           var score = wSum > 0 ? Math.round((fTrend * wT + fFund * wF + fVol * wV + fNews * wN + fValue * wVal) / wSum * 100) : 50;
           var dir = score >= 60 ? 'up' : (score <= 40 ? 'down' : 'flat');
@@ -1524,7 +1640,6 @@ function quantPayload(cfg, quote, recent) {
 }
 
 /* ================= 异动提醒：量价信号检测 + 浏览器通知 ================= */
-var ALERT_DEFAULTS = { on: true, ratioUp: 1.8, ratioDown: 0.5, pct: 3, cd: 120, larkOn: false, larkUrl: '', fundOn: true, fundAmt: 5000, fundPct: 5 };
 var SIG_INFO = {
   upVol: '放量上涨', downVol: '放量下跌',
   upShrink: '缩量上涨', downShrink: '缩量下跌'
@@ -1538,11 +1653,10 @@ function saveAlertCfg(cfg, cb) {
   chrome.storage.local.set({ chhAlert: cfg }, cb || function () {});
 }
 
-/* 盘中进度（把当前成交量折算为全天预估量）：返回 0~1，未开盘 0，已收盘 1 */
+/* 盘中进度（把当前成交量折算为全天预估量）：返回 0~1，未开盘 0，已收盘 1（美股按纽约时区） */
 function sessionProgress(market) {
   var now = new Date();
   var d = now.getDay();
-  if (d === 0 || d === 6) return 1;
   var m = now.getHours() * 60 + now.getMinutes();
   function span(am0, am1, pm0, pm1) {
     var total = (am1 - am0) + (pm1 - pm0);
@@ -1552,13 +1666,16 @@ function sessionProgress(market) {
     if (m <= pm1) return ((am1 - am0) + (m - pm0)) / total;
     return 1;
   }
-  if (market === 'hk') return span(9 * 60 + 30, 12 * 60, 13 * 60, 16 * 60);
-  if (market === 'sg') return span(9 * 60, 11 * 60 + 30, 13 * 60 + 30, 15 * 60 + 30);
   if (market === 'us') {
-    if (m >= 21 * 60 + 30) return (m - (21 * 60 + 30)) / 390;   /* 北京时间 21:30~24:00 */
-    if (m < 4 * 60) return ((24 * 60 - (21 * 60 + 30)) + m) / 390; /* 0:00~4:00 */
+    var ny = nyNow();
+    if (!ny || ny.day < 1 || ny.day > 5) return 1;
+    if (ny.mins < 570) return 0;
+    if (ny.mins <= 960) return (ny.mins - 570) / 390;
     return 1;
   }
+  if (d === 0 || d === 6) return 1;
+  if (market === 'hk') return span(9 * 60 + 30, 12 * 60, 13 * 60, 16 * 60);
+  if (market === 'sg') return span(9 * 60, 11 * 60 + 30, 13 * 60 + 30, 15 * 60 + 30);
   return span(9 * 60 + 30, 11 * 60 + 30, 13 * 60, 15 * 60);   /* A股沪深北 */
 }
 function isTradingTime(market) {
@@ -1572,18 +1689,22 @@ function checkAlerts() {
     chrome.storage.local.get('chhStocks', function (o) {
       var list = (o && Array.isArray(o.chhStocks)) ? o.chhStocks : [];
       if (!list.length) return;
-      list.forEach(function (s) {
-        if (!s || !s.market || !s.code || !isTradingTime(s.market)) return;
-        checkOneAlert(s, cfg);
-        /* 主力资金异动（仅A股，盘中实时资金） */
-        if (cfg.fundOn && isAShare(s)) checkOneFund(s, cfg);
+      var active = list.filter(function (s) {
+        return s && s.market && s.code && isTradingTime(s.market);
+      });
+      /* 并发限流：同时最多 3 只股票检测，避免每轮 3N 个请求打爆数据源 */
+      mapLimit(active, 3, function (s) {
+        var ps = [checkOneAlert(s, cfg)];
+        if (cfg.fundOn && isAShare(s)) ps.push(checkOneFund(s, cfg));
+        return Promise.all(ps);
       });
     });
   });
 }
 function checkOneAlert(s, cfg) {
+  var cd = Math.max(Number(cfg.cd) || 120, 5); /* 冷却下限 5 分钟，防止误配 0/负数导致连环告警 */
   var qp = (s.market === 'sg') ? fetchEM(s) : fetchTencent(s).catch(function () { return fetchEM(s); });
-  qp.then(function (q) {
+  return qp.then(function (q) {
     if (!q || !isFinite(q.price) || !isFinite(q.pct)) return;
     if (q.volHand == null || !(q.volHand > 0)) return;   /* 上金所现货无成交量，跳过 */
     return fetchKline(s, 60).then(function (rows) {
@@ -1602,16 +1723,20 @@ function checkOneAlert(s, cfg) {
       else if (q.pct <= -cfg.pct && ratio <= cfg.ratioDown) sig = 'downShrink';
       if (!sig) return;
       var now = Date.now();
-      chrome.storage.local.get('chhAlertLog', function (o2) {
-        var log = (o2 && o2.chhAlertLog) || {};
-        var key = s.market + ':' + s.code;
-        var prev = log[key];
-        if (prev && prev.type === sig && now - prev.t < cfg.cd * 60000) return; /* 冷却去重 */
-        log[key] = { type: sig, t: now };
-        chrome.storage.local.set({ chhAlertLog: log });
-        predictDay(s, rows).then(function (p) {
-          sendAlert(s, q, ratio, sig, p, cfg);
-        }).catch(function () { sendAlert(s, q, ratio, sig, null, cfg); });
+      return new Promise(function (resolve) {
+        chrome.storage.local.get('chhAlertLog', function (o2) {
+          var log = (o2 && o2.chhAlertLog) || {};
+          var key = s.market + ':' + s.code;
+          log[key] = log[key] || {};
+          var prevT = log[key][sig] || 0;
+          /* 冷却按「股票+信号类型」分别记录，交替信号不再互相覆盖 */
+          if (prevT && now - prevT < cd * 60000) { resolve(); return; }
+          log[key][sig] = now;
+          chrome.storage.local.set({ chhAlertLog: log }, function () { resolve(); });
+          predictDay(s, rows).then(function (p) {
+            sendAlert(s, q, ratio, sig, p, cfg);
+          }).catch(function () { sendAlert(s, q, ratio, sig, null, cfg); });
+        });
       });
     });
   }).catch(function () {});
@@ -1694,6 +1819,13 @@ function buildLarkCard(s, q, ratio, sig, pred, note) {
   };
 }
 function pushLark(url, card) {
+  /* 白名单校验：仅允许飞书官方 webhook 域名，防止配置错误导致数据外发 */
+  var u = null;
+  try { u = new URL(url); } catch (e) { }
+  if (!u || u.protocol !== 'https:' || u.hostname !== 'open.feishu.cn' ||
+      !/^\/open-apis\/bot\/v2\/hook\/[0-9A-Za-z-]{6,}\/?$/.test(u.pathname)) {
+    return Promise.reject(new Error('飞书 Webhook 地址无效，仅支持 https://open.feishu.cn/open-apis/bot/v2/hook/...'));
+  }
   return fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1717,7 +1849,8 @@ function fmtWanAmt(y) {
   return sign + a.toFixed(0);
 }
 function checkOneFund(s, cfg) {
-  fetchFlowIntraday(s).then(function (flow) {
+  var cd = Math.max(Number(cfg.cd) || 120, 5);
+  return fetchFlowIntraday(s).then(function (flow) {
     if (!flow || flow.mainNet == null || flow.mainPct == null) return;
     var amt = cfg.fundAmt * 1e4, pct = cfg.fundPct;
     var sig = null;
@@ -1725,14 +1858,17 @@ function checkOneFund(s, cfg) {
     else if (flow.mainNet <= -amt && flow.mainPct <= -pct) sig = 'fundOut';
     if (!sig) return;
     var now = Date.now();
-    chrome.storage.local.get('chhAlertLog', function (o) {
-      var log = (o && o.chhAlertLog) || {};
-      var key = s.market + ':' + s.code;
-      var prev = log[key];
-      if (prev && prev.type === sig && now - prev.t < cfg.cd * 60000) return; /* 冷却去重 */
-      log[key] = { type: sig, t: now };
-      chrome.storage.local.set({ chhAlertLog: log });
-      sendFundAlert(s, flow, sig, cfg);
+    return new Promise(function (resolve) {
+      chrome.storage.local.get('chhAlertLog', function (o) {
+        var log = (o && o.chhAlertLog) || {};
+        var key = s.market + ':' + s.code;
+        log[key] = log[key] || {};
+        var prevT = log[key][sig] || 0;
+        if (prevT && now - prevT < cd * 60000) { resolve(); return; }
+        log[key][sig] = now;
+        chrome.storage.local.set({ chhAlertLog: log }, function () { resolve(); });
+        sendFundAlert(s, flow, sig, cfg);
+      });
     });
   }).catch(function () {});
 }

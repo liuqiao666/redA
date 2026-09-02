@@ -25,10 +25,16 @@ function esc(s) {
     return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
   });
 }
-function showOk() {
+function showOk(txt, isErr) {
+  okEl.textContent = txt || '已保存 ✓';
+  okEl.style.color = isErr ? '#e5484d' : '';
   okEl.classList.add('show');
   clearTimeout(showOkTimer);
-  showOkTimer = setTimeout(function () { okEl.classList.remove('show'); }, 1800);
+  showOkTimer = setTimeout(function () {
+    okEl.classList.remove('show');
+    okEl.style.color = '';
+    okEl.textContent = '已保存 ✓';
+  }, 1800);
 }
 function currentCfg() {
   return stocks.length ? stocks[Math.min(activeIdx, stocks.length - 1)] : null;
@@ -44,7 +50,7 @@ function renderMyList() {
     d.className = 'mrow' + (i === activeIdx ? ' on' : '');
     var act = i === activeIdx ? '<span class="act">展示中</span>' : '';
     d.innerHTML =
-      '<span class="mk">' + marketLabel(s.market) + '</span>' +
+      '<span class="mk">' + esc(marketLabel(s.market)) + '</span>' +
       '<span class="nm">' + esc(s.name) + '</span>' +
       '<span class="cd">' + esc(displayCode(s)) + '</span>' +
       act +
@@ -68,13 +74,16 @@ function removeStock(i) {
   if (!removed.length) return;
   if (i < activeIdx) activeIdx--;
   else if (i === activeIdx) activeIdx = Math.min(activeIdx, stocks.length - 1);
-  saveStocks(stocks, function () {
-    saveActive(Math.max(0, activeIdx));
-    showOk();
-    renderMyList();
-    renderCurrent();
-    fetchPrice();
-    renderPred();
+  saveStocks(stocks, function (err) {
+    if (err) { showOk('保存失败，请重试', true); return; }
+    saveActive(Math.max(0, activeIdx), function (err2) {
+      if (err2) { showOk('保存失败，请重试', true); return; }
+      showOk();
+      renderMyList();
+      renderCurrent();
+      fetchPrice();
+      renderPred();
+    });
   });
 }
 
@@ -94,7 +103,7 @@ function renderList(items) {
     var exists = stocks.some(function (s) {
       return s.market === it.market && String(s.code) === String(it.code);
     });
-    d.innerHTML = '<span class="mk">' + marketLabel(it.market) + '</span>' +
+    d.innerHTML = '<span class="mk">' + esc(marketLabel(it.market)) + '</span>' +
       '<span class="nm">' + esc(it.name) + '</span>' +
       '<span class="cd">' + esc(displayCode(it)) + '</span>' +
       '<span class="tp">' + esc(typeLabel(it.type)) + '</span>' +
@@ -109,23 +118,36 @@ function renderList(items) {
 function addStock(it) {
   stocks.push({ market: it.market, code: it.code, name: it.name });
   var idx = stocks.length - 1;
-  saveStocks(stocks, function () {
-    saveActive(idx);
-    showOk();
-    renderMyList();
-    renderCurrent();
-    fetchPrice();
-    renderPred();
-    kw.value = '';
-    list.innerHTML = '';
+  saveStocks(stocks, function (err) {
+    if (err) { showOk('保存失败，请重试', true); return; }
+    saveActive(idx, function (err2) {
+      if (err2) { showOk('保存失败，请重试', true); return; }
+      showOk();
+      renderMyList();
+      renderCurrent();
+      fetchPrice();
+      renderPred();
+      kw.value = '';
+      list.innerHTML = '';
+    });
   });
 }
-function doSearch() {
+var searchSeq = 0;
+var searchTimer = null;
+function doSearch(force) {
   var q = kw.value.trim();
-  if (!q) return;
+  if (!q) { searchSeq++; list.innerHTML = ''; return; }
+  if (!force) {
+    /* 防抖：连续输入只触发最后一次 */
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function () { doSearch(true); }, 300);
+    return;
+  }
+  var seq = ++searchSeq;
   list.innerHTML = '<div class="emp">搜索中…</div>';
   searchStocks(q)
     .then(function (items) {
+      if (seq !== searchSeq) return; /* 丢弃过期响应 */
       items.sort(function (a, b) {
         var x = isStockType(a.type) ? 0 : 1, y = isStockType(b.type) ? 0 : 1;
         return x - y;
@@ -133,6 +155,7 @@ function doSearch() {
       renderList(items);
     })
     .catch(function () {
+      if (seq !== searchSeq) return;
       list.innerHTML = '<div class="emp">搜索失败，请检查网络后重试</div>';
     });
 }
@@ -172,14 +195,18 @@ function renderPred() {
     if (chrome.runtime.lastError || !resp || !resp.ok || !resp.data) return;
     var p = resp.data;
     var col = p.dir === 'up' ? '#e5484d' : (p.dir === 'down' ? '#10a37f' : '#64748b');
-    prdline.innerHTML = '预测参考：<b style="color:' + col + '">' + p.dirTxt + '</b>' +
-      ' · 明日 <b>' + p.nextLow.toFixed(2) + '</b>~<b>' + p.nextHigh.toFixed(2) + '</b>' +
+    prdline.innerHTML = '预测参考：<b style="color:' + col + '">' + esc(p.dirTxt) + '</b>' +
+      ' · 明日 <b>' + (+p.nextLow).toFixed(2) + '</b>~<b>' + (+p.nextHigh).toFixed(2) + '</b>' +
       ' · 上涨概率 <b>' + Math.round(p.probUp * 100) + '%</b>';
   });
 }
 
-kw.addEventListener('keydown', function (e) { if (e.key === 'Enter') doSearch(); });
-kw.addEventListener('input', function () { if (kw.value.trim().length >= 2) doSearch(); });
+kw.maxLength = 30;
+kw.addEventListener('keydown', function (e) { if (e.key === 'Enter') { clearTimeout(searchTimer); doSearch(true); } });
+kw.addEventListener('input', function () {
+  if (kw.value.trim().length >= 2) doSearch();
+  else { clearTimeout(searchTimer); searchSeq++; list.innerHTML = ''; }
+});
 openOpts.addEventListener('click', function () {
   if (chrome.runtime.openOptionsPage) chrome.runtime.openOptionsPage();
 });
@@ -194,7 +221,10 @@ function renderVis() {
 }
 visToggle.addEventListener('change', function () {
   var v = visToggle.checked;
-  chrome.storage.local.set({ chhVisible: v }, function () { showOk(); });
+  chrome.storage.local.set({ chhVisible: v }, function () {
+    if (chrome.runtime.lastError) { showOk('保存失败，请重试', true); renderVis(); return; }
+    showOk();
+  });
 });
 
 chrome.storage.onChanged.addListener(function (changes, area) {

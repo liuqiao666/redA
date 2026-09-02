@@ -9,41 +9,60 @@ var TYPE_LABEL = {
 };
 var STOCK_TYPES = { 'GP-A': 1, 'GP': 1, 'GP-H': 1, 'GP-U': 1, 'ETF': 1, 'LOF': 1, 'QZ': 1, '现货': 1 };
 
+/* 告警与量化默认值：options / background 共用（单一来源，避免两处定义漂移） */
+var ALERT_DEFAULTS = { on: true, ratioUp: 1.8, ratioDown: 0.5, pct: 3, cd: 120, larkOn: false, larkUrl: '', fundOn: true, fundAmt: 5000, fundPct: 5 };
+var QUANT_DEFAULTS = { on: true, wTrend: 30, wFund: 30, wVol: 20, wNews: 10, wValue: 10 };
+
 /* 多股票列表存储：chhStocks = [{market, code, name}, ...]
  * 无内置默认股票，完全由用户自行添加配置。 */
 function loadStocks(cb) {
   chrome.storage.local.get(['chhStocks', 'chhCfg'], function (o) {
+    var err = chrome.runtime.lastError ? chrome.runtime.lastError.message : null;
     var list = (o && Array.isArray(o.chhStocks)) ? o.chhStocks.slice() : [];
     /* 兼容旧版单股票配置：将用户此前设置的 chhCfg 迁移为列表 */
-    if (!list.length && o && o.chhCfg && o.chhCfg.code && o.chhCfg.market && o.chhCfg.name) {
+    if (!err && !list.length && o && o.chhCfg && o.chhCfg.code && o.chhCfg.market && o.chhCfg.name) {
       list = [{ market: o.chhCfg.market, code: o.chhCfg.code, name: o.chhCfg.name }];
-      try { chrome.storage.local.set({ chhStocks: list }); } catch (e) {}
+      saveStocks(list);
     }
-    cb(list);
+    cb(list, err);
   });
 }
 function saveStocks(list, cb) {
-  chrome.storage.local.set({ chhStocks: list }, cb || function () {});
+  chrome.storage.local.set({ chhStocks: list }, function () {
+    var err = chrome.runtime.lastError ? chrome.runtime.lastError.message : null;
+    if (err) console.error('saveStocks failed:', err);
+    if (cb) cb(err);
+  });
 }
 /* 当前展示的股票索引：chhActive */
 function loadActive(cb) {
   chrome.storage.local.get('chhActive', function (o) {
+    var err = chrome.runtime.lastError ? chrome.runtime.lastError.message : null;
     var i = (o && o.chhActive != null) ? +o.chhActive : 0;
-    cb(isFinite(i) && i >= 0 ? i : 0);
+    cb(isFinite(i) && i >= 0 ? i : 0, err);
   });
 }
 function saveActive(i, cb) {
-  chrome.storage.local.set({ chhActive: i }, cb || function () {});
+  chrome.storage.local.set({ chhActive: i }, function () {
+    var err = chrome.runtime.lastError ? chrome.runtime.lastError.message : null;
+    if (err) console.error('saveActive failed:', err);
+    if (cb) cb(err);
+  });
 }
 /* 持仓列表存储：chhHoldings = [{market, code, name, qty, cost}, ...]
  * qty 为持股数量（股），cost 为每股成本（对应币种）。 */
 function loadHoldings(cb) {
   chrome.storage.local.get('chhHoldings', function (o) {
-    cb((o && Array.isArray(o.chhHoldings)) ? o.chhHoldings.slice() : []);
+    var err = chrome.runtime.lastError ? chrome.runtime.lastError.message : null;
+    cb((o && Array.isArray(o.chhHoldings)) ? o.chhHoldings.slice() : [], err);
   });
 }
 function saveHoldings(list, cb) {
-  chrome.storage.local.set({ chhHoldings: list }, cb || function () {});
+  chrome.storage.local.set({ chhHoldings: list }, function () {
+    var err = chrome.runtime.lastError ? chrome.runtime.lastError.message : null;
+    if (err) console.error('saveHoldings failed:', err);
+    if (cb) cb(err);
+  });
 }
 function marketLabel(m) { return MARKET_LABEL[m] || String(m || '').toUpperCase(); }
 function typeLabel(t) { return TYPE_LABEL[t] || t || '证券'; }

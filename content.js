@@ -10,7 +10,7 @@ if (window.__CHH_FLOAT_INSTALLED__) return;
 window.__CHH_FLOAT_INSTALLED__ = true;
 
 var TX_URL = 'https://qt.gtimg.cn/q=';
-var MARKET_LABEL = { sz: '深交所', sh: '上交所', bj: '北交所', hk: '港股', us: '美股' };
+var MARKET_LABEL = { sz: '深交所', sh: '上交所', bj: '北交所', hk: '港股', us: '美股', sg: '上金所' };
 var THEME = {
   blue: '#2563eb', blueDeep: '#1d4ed8', blueLight: '#eff6ff',
   ink: '#0f172a', ink2: '#475569', ink3: '#94a3b8',
@@ -86,12 +86,17 @@ var CSS = `
 .hint.show{opacity:1;transform:none}
 
 .card{
-  position:fixed;width:700px;max-width:calc(100vw - 24px);pointer-events:auto;
+  position:fixed;width:700px;max-width:calc(100vw - 24px);max-height:calc(100vh - 24px);
+  overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:#cbd5e1 transparent;
   background:#ffffff;border:1px solid ${THEME.line};border-radius:16px;
   box-shadow:0 24px 60px rgba(15,23,42,.16),0 4px 14px rgba(15,23,42,.06);
   opacity:0;transform:scale(.94) translateY(8px);pointer-events:none;
   transition:opacity .22s ease,transform .24s cubic-bezier(.2,.9,.3,1.18);
 }
+.card::-webkit-scrollbar{width:8px}
+.card::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px;border:2px solid #fff}
+.card::-webkit-scrollbar-thumb:hover{background:#94a3b8}
 .card.open{opacity:1;transform:none;pointer-events:auto}
 /* 顶部双栏：左侧 股票名+实时价，右侧 AI 智能研判 */
 .card .top{display:flex;gap:14px;padding:16px 18px 0}
@@ -129,6 +134,9 @@ var CSS = `
 @media (max-width:620px){
   .card .top{flex-wrap:wrap}
   .card .topL{flex-basis:100%}
+}
+@media (prefers-reduced-motion: reduce){
+  .ball,.ball *,.card,.card *,.hint{animation:none!important;transition:none!important}
 }
 .card .hd{display:flex;align-items:flex-start;justify-content:space-between;padding:16px 18px 0}
 .card .name{font-size:17px;font-weight:700;letter-spacing:.02em;color:${THEME.ink}}
@@ -330,8 +338,8 @@ styleEl.textContent = CSS;
 root.appendChild(styleEl);
 
 root.innerHTML += `
-<div class="ball flat empty" id="ball">
-  <div class="x" id="btnHideBall">×</div>
+<div class="ball flat empty" id="ball" role="button" tabindex="0" aria-label="展开股价行情">
+  <div class="x" id="btnHideBall" role="button" tabindex="0" aria-label="隐藏悬浮球">×</div>
   <div class="tag" id="ballTag">未配置</div>
   <div class="price" id="ballPx">--</div>
   <div class="pct" id="ballPct"></div>
@@ -796,26 +804,30 @@ function parseTxLocal(p, market) {
   return d;
 }
 function directFetch() {
-  var q = cfg.market === 'us' ? 'us' + String(cfg.code).split('.')[0].toUpperCase() : cfg.market + cfg.code;
+  var reqCfg = cfg;
+  var q = reqCfg.market === 'us' ? 'us' + String(reqCfg.code).split('.')[0].toUpperCase() : reqCfg.market + reqCfg.code;
   return fetch(TX_URL + q + '&_=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.text(); })
     .then(function (txt) {
       var m = txt.match(/="([^"]*)"/);
       if (!m || !m[1] || m[1].indexOf('~') < 0) throw new Error('no direct data');
-      var d = parseTxLocal(m[1].split('~'), cfg.market);
+      var d = parseTxLocal(m[1].split('~'), reqCfg.market);
       if (!isFinite(d.price) || d.price <= 0) throw new Error('bad direct data');
+      if (reqCfg !== cfg) return null; /* 切换股票后丢弃过期响应 */
       srcKind = 'tx';
       return d;
     });
 }
 function requestQuote() {
+  var reqCfg = cfg;
   var viaBg = new Promise(function (resolve, reject) {
     try {
       if (!chrome.runtime || !chrome.runtime.sendMessage) { reject(new Error('no bg')); return; }
       var settled = false;
       var done = function (fn, v) { if (!settled) { settled = true; fn(v); } };
-      chrome.runtime.sendMessage({ type: 'quote', cfg: cfg }, function (resp) {
+      chrome.runtime.sendMessage({ type: 'quote', cfg: reqCfg }, function (resp) {
         if (chrome.runtime.lastError) { done(reject, chrome.runtime.lastError); return; }
+        if (reqCfg !== cfg) { done(resolve, null); return; } /* stale 守卫：切换股票后丢弃旧响应 */
         if (resp && resp.ok && resp.data) {
           srcKind = resp.source || 'tx';
           done(resolve, resp.data);
@@ -862,11 +874,7 @@ function apply(d) {
     totalCap: (isA && state.totalCap > 0) ? fmtYi(state.totalCap) : '--',
     floatCap: (isA && state.floatCap > 0) ? fmtYi(state.floatCap) : '--'
   };
-  var cells = gridEl.querySelectorAll('.cell');
-  for (var i = 0; i < cells.length; i++) {
-    var v = cells[i].querySelector('.val');
-    if (v && v.dataset.k) v.textContent = vals[v.dataset.k] || '--';
-  }
+  for (var k in vals) { if (gridVal[k]) gridVal[k].textContent = vals[k] || '--'; }
   luEl.textContent = (isA && state.lu > 0) ? fmt2(state.lu) : '--';
   ldEl.textContent = (isA && state.ld > 0) ? fmt2(state.ld) : '--';
 
@@ -883,14 +891,19 @@ function apply(d) {
   refreshPredict(false);
 }
 function setSource(kind) {
+  if (!srcRow.dataset.built) {
+    srcRow.innerHTML = '<i></i><span></span>';
+    srcRow.dataset.built = '1';
+  }
+  var txt = srcRow.querySelector('span');
   if (kind === 'ok') {
     srcRow.style.display = 'flex';
     srcRow.className = 'srcRow' + (srcKind === 'em' ? ' alt' : '');
-    srcRow.innerHTML = '<i></i><span>' + (srcKind === 'em' ? '数据源：东方财富（备用）' : '数据源：腾讯行情') + '</span>';
+    txt.textContent = (srcKind === 'em' ? '数据源：东方财富（备用）' : '数据源：腾讯行情');
   } else {
     srcRow.style.display = 'flex';
     srcRow.className = 'srcRow off';
-    srcRow.innerHTML = '<i></i><span>连接中断，正在重试…</span>';
+    txt.textContent = '连接中断，正在重试…';
   }
 }
 
@@ -902,10 +915,18 @@ function chartTime(raw) {
   return s;
 }
 function chartVisibleRows() { return chartRows.slice(chartStart, chartEnd || chartRows.length); }
+var rafDraw = null;
+/* rAF 合并：mousemove / wheel / 拖拽等高频事件的多次重绘合并为一帧一次 */
+function requestDraw() {
+  if (rafDraw) return;
+  rafDraw = requestAnimationFrame(function () { rafDraw = null; drawSpark(); });
+}
 function drawSpark() {
   var W = spark.clientWidth, H = spark.clientHeight;
   if (!W || !H) return;
-  var dpr = window.devicePixelRatio || 1; spark.width = W * dpr; spark.height = H * dpr;
+  var dpr = window.devicePixelRatio || 1;
+  var cw = Math.round(W * dpr), ch = Math.round(H * dpr);
+  if (spark.width !== cw || spark.height !== ch) { spark.width = cw; spark.height = ch; }
   var ctx = spark.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
   var rows = chartVisibleRows(); if (rows.length < 2) return;
   var top = 8, bottom = H - 22, min = Math.min.apply(null, rows.map(function (r) { return r.l; })), max = Math.max.apply(null, rows.map(function (r) { return r.h; }));
@@ -939,18 +960,38 @@ chartToggle.addEventListener('click', function () {
   spwrapEl.classList.toggle('collapsed');
   if (!spwrapEl.classList.contains('collapsed')) drawSpark();
 });
-chartWrap.addEventListener('mousemove', function (e) { var r = chartWrap.getBoundingClientRect(), rows = chartVisibleRows(); if (!rows.length) return; chartHover = Math.max(0, Math.min(rows.length - 1, Math.round((e.clientX - r.left) / r.width * (rows.length - 1)))); drawSpark(); });
-chartWrap.addEventListener('mouseleave', function () { chartHover = -1; chartTip.classList.remove('show'); drawSpark(); });
-chartWrap.addEventListener('wheel', function (e) { e.preventDefault(); if (!chartRows.length) return; var span = chartEnd - chartStart, next = Math.max(20, Math.min(chartRows.length, Math.round(span * (e.deltaY > 0 ? 1.2 : .8)))); var r = chartWrap.getBoundingClientRect(), ratio = (e.clientX - r.left) / r.width, anchor = chartStart + Math.round(span * ratio); chartStart = Math.max(0, Math.min(chartRows.length - next, anchor - Math.round(next * ratio))); chartEnd = chartStart + next; drawSpark(); }, { passive: false });
+chartWrap.addEventListener('mousemove', function (e) { var r = chartWrap.getBoundingClientRect(), rows = chartVisibleRows(); if (!rows.length) return; chartHover = Math.max(0, Math.min(rows.length - 1, Math.round((e.clientX - r.left) / r.width * (rows.length - 1)))); requestDraw(); });
+chartWrap.addEventListener('mouseleave', function () { chartHover = -1; chartTip.classList.remove('show'); requestDraw(); });
+/* 滚轮冲突修复：默认滚轮滚动卡片；卡片无溢出或按住 Shift/Ctrl/Meta 时缩放图表 */
+chartWrap.title = '滚轮滚动卡片 · Shift+滚轮缩放K线（卡片无溢出时滚轮直接缩放）';
+chartWrap.addEventListener('wheel', function (e) {
+  var cardScrollable = card.scrollHeight > card.clientHeight + 1;
+  var zoom = e.shiftKey || e.ctrlKey || e.metaKey || !cardScrollable;
+  if (!zoom) return;
+  e.preventDefault();
+  if (!chartRows.length) return;
+  var span = chartEnd - chartStart, next = Math.max(20, Math.min(chartRows.length, Math.round(span * (e.deltaY > 0 ? 1.2 : .8)))); var r = chartWrap.getBoundingClientRect(), ratio = (e.clientX - r.left) / r.width, anchor = chartStart + Math.round(span * ratio); chartStart = Math.max(0, Math.min(chartRows.length - next, anchor - Math.round(next * ratio))); chartEnd = chartStart + next; requestDraw();
+}, { passive: false });
 chartWrap.addEventListener('pointerdown', function (e) { chartDrag = { x: e.clientX, start: chartStart, end: chartEnd }; chartWrap.setPointerCapture(e.pointerId); });
-chartWrap.addEventListener('pointermove', function (e) { if (!chartDrag || !chartRows.length) return; var delta = Math.round((chartDrag.x - e.clientX) / Math.max(1, chartWrap.clientWidth) * (chartDrag.end - chartDrag.start)); var span = chartDrag.end - chartDrag.start; chartStart = Math.max(0, Math.min(chartRows.length - span, chartDrag.start + delta)); chartEnd = chartStart + span; drawSpark(); });
+chartWrap.addEventListener('pointermove', function (e) { if (!chartDrag || !chartRows.length) return; var delta = Math.round((chartDrag.x - e.clientX) / Math.max(1, chartWrap.clientWidth) * (chartDrag.end - chartDrag.start)); var span = chartDrag.end - chartDrag.start; chartStart = Math.max(0, Math.min(chartRows.length - span, chartDrag.start + delta)); chartEnd = chartStart + span; requestDraw(); });
 chartWrap.addEventListener('pointerup', function () { chartDrag = null; });
+chartWrap.addEventListener('pointercancel', function () { chartDrag = null; });
 
 /* ================= 市场状态（按市场分时段） ================= */
+/* 美股（纽约）本地时钟：自动适配夏令时，用于交易时段判断 */
+function nyNow() {
+  try {
+    var parts = {};
+    new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false })
+      .formatToParts(new Date()).forEach(function (p) { parts[p.type] = p.value; });
+    var wd = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[parts.weekday];
+    if (wd == null) return null;
+    return { day: wd, mins: ((+parts.hour) % 24) * 60 + (+parts.minute) };
+  } catch (e) { return null; }
+}
 function marketStatus() {
   var now = new Date();
   var day = now.getDay();
-  if (day === 0 || day === 6) return { txt: '休市', live: false };
   var m = now.getHours() * 60 + now.getMinutes();
   var mk = cfg ? cfg.market : 'sz';
   if (mk === 'sg') {
@@ -960,17 +1001,27 @@ function marketStatus() {
     }
     return { txt: '已收盘', live: false };
   }
+  if (mk === 'us') {
+    /* 美股按纽约时区（自动适配夏令时），9:30~16:00 交易 */
+    var ny = nyNow();
+    if (ny) {
+      if (ny.day < 1 || ny.day > 5) return { txt: '休市', live: false };
+      if (ny.mins < 570) return { txt: '未开盘', live: false };
+      if (ny.mins < 960) return { txt: '交易中', live: true };
+      return { txt: '已收盘', live: false };
+    }
+    /* 降级：本地时间近似（不区分夏令时） */
+    if (m < 21 * 60 + 30) return { txt: '未开盘', live: false };
+    if (m >= 4 * 60) return { txt: '已收盘', live: false };
+    return { txt: '交易中', live: true };
+  }
+  if (day === 0 || day === 6) return { txt: '休市', live: false };
   if (mk === 'hk') {
     if (m < 9 * 60 + 30) return { txt: '未开盘', live: false };
     if (m <= 12 * 60) return { txt: '交易中', live: true };
     if (m < 13 * 60) return { txt: '午间休市', live: false };
     if (m <= 16 * 60) return { txt: '交易中', live: true };
     return { txt: '已收盘', live: false };
-  }
-  if (mk === 'us') {
-    if (m < 21 * 60 + 30) return { txt: '未开盘', live: false };
-    if (m >= 4 * 60) return { txt: '已收盘', live: false };
-    return { txt: '交易中', live: true };
   }
   if (m < 9 * 60 + 30) return { txt: '未开盘', live: false };
   if (m <= 11 * 60 + 30) return { txt: '交易中', live: true };
@@ -993,12 +1044,13 @@ function refresh() {
   if (paused || !visible) return;
   if (!cfg) { scheduleNext(); return; }
   requestQuote()
-    .then(function (d) { apply(d); })
+    .then(function (d) { if (d) apply(d); })
     .catch(function () { setSource('off'); })
     .then(function () { requestBoard(false); scheduleNext(); });
 }
 function scheduleNext() {
   if (timer) { clearInterval(timer); timer = null; }
+  if (paused || !visible || !cfg) return; /* 暂停/隐藏/未配置时停表，避免空转 */
   timer = setInterval(refresh, marketStatus().live ? 3000 : 15000);
 }
 
@@ -1306,11 +1358,11 @@ function renderNews(n) {
   n.items.forEach(function (it) {
     var d = document.createElement('div');
     d.className = 'nitem';
-    var a = document.createElement('a');
+    /* 协议白名单：仅 https/http 链接可点击，防数据源污染出 javascript:/data: 链接 */
+    var safeUrl = /^https?:\/\//i.test(String(it.url || ''));
+    var a = document.createElement(safeUrl ? 'a' : 'span');
     a.className = 'nt';
-    a.href = it.url;
-    a.target = '_blank';
-    a.rel = 'noopener';
+    if (safeUrl) { a.href = it.url; a.target = '_blank'; a.rel = 'noopener'; }
     a.textContent = it.title;
     var p = document.createElement('span');
     p.className = 'np';
@@ -1618,8 +1670,7 @@ function endDrag() {
   dragging = false;
   ball.classList.remove('dragging');
   if (!moved) { toggleCard(); }
-  else { snapBall(); }
-  savePos();
+  else { snapBall(); savePos(); } /* 仅拖动后保存位置，点击开卡不写存储 */
 }
 function snapBall() {
   var r = ball.getBoundingClientRect();
@@ -1659,11 +1710,14 @@ btnClose.addEventListener('click', function () { card.classList.remove('open'); 
 function applyVisible() {
   if (visible) {
     ball.style.display = '';
+    if (!holdTimer) holdTimer = setInterval(requestHoldings, 30000);
   } else {
     card.classList.remove('open');
     hintEl.classList.remove('show');
     ball.style.display = 'none';
+    if (holdTimer) { clearInterval(holdTimer); holdTimer = null; } /* 隐藏时停止持仓轮询 */
   }
+  scheduleNext();
 }
 function setVisible(v) {
   visible = !!v;
@@ -1673,6 +1727,13 @@ function setVisible(v) {
 btnHideBall.addEventListener('click', function (e) {
   e.stopPropagation();
   setVisible(false);
+});
+/* 键盘可访问：悬浮球与关闭钮支持 Enter/Space 操作 */
+ball.addEventListener('keydown', function (e) {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCard(); }
+});
+btnHideBall.addEventListener('keydown', function (e) {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setVisible(false); }
 });
 btnHide.addEventListener('click', function () {
   setVisible(false);
@@ -1687,7 +1748,8 @@ btnOpts.addEventListener('click', function () {
 btnPause.addEventListener('click', function () {
   paused = !paused;
   btnPause.textContent = paused ? '恢复' : '暂停';
-  if (!paused) refresh();
+  if (paused) scheduleNext(); /* 暂停即停表 */
+  else refresh();
 });
 window.addEventListener('resize', function () {
   if (!visible) return;
@@ -1703,12 +1765,14 @@ var STATS = [
   ['成交量', 'volume'], ['成交额', 'amount'], ['换手率', 'turnover'], ['振幅', 'amplitude'],
   ['市盈率(动)', 'pe'], ['市净率', 'pb'], ['总市值', 'totalCap'], ['流通市值', 'floatCap']
 ];
-STATS.forEach(function (s) {
-  var c = document.createElement('div');
-  c.className = 'cell';
-  c.innerHTML = '<span class="lbl">' + s[0] + '</span><span class="val" data-k="' + s[1] + '">--</span>';
-  gridEl.appendChild(c);
-});
+var gridVal = {};
+  STATS.forEach(function (s) {
+    var c = document.createElement('div');
+    c.className = 'cell';
+    c.innerHTML = '<span class="lbl">' + s[0] + '</span><span class="val" data-k="' + s[1] + '">--</span>';
+    gridVal[s[1]] = c.querySelector('.val');
+    gridEl.appendChild(c);
+  });
 
 /* ================= 初始化 ================= */
 (function init() {

@@ -33,9 +33,6 @@ var qwVol = document.getElementById('qwVol');
 var qwNews = document.getElementById('qwNews');
 var qwValue = document.getElementById('qwValue');
 
-var ALERT_DEFAULTS = { on: true, ratioUp: 1.8, ratioDown: 0.5, pct: 3, cd: 120, larkOn: false, larkUrl: '', fundOn: true, fundAmt: 5000, fundPct: 5 };
-var QUANT_DEFAULTS = { on: true, wTrend: 30, wFund: 30, wVol: 20, wNews: 10, wValue: 10 };
-
 var stocks = [];
 var activeIdx = 0;
 
@@ -62,7 +59,7 @@ function renderMyList() {
     d.className = 'mrow' + (i === activeIdx ? ' on' : '');
     var act = i === activeIdx ? '<span class="act">展示中</span>' : '';
     d.innerHTML =
-      '<span class="mk">' + marketLabel(s.market) + '</span>' +
+      '<span class="mk">' + esc(marketLabel(s.market)) + '</span>' +
       '<span class="nm">' + esc(s.name) + '</span>' +
       '<span class="cd">' + esc(displayCode(s)) + '</span>' +
       act +
@@ -74,7 +71,8 @@ function renderMyList() {
     if (swBtn) {
       swBtn.addEventListener('click', function (e) {
         e.stopPropagation();
-        saveActive(i, function () {
+        saveActive(i, function (err) {
+          if (err) { showMsg('err', '保存失败，请重试'); return; }
           showMsg('ok', '已切换展示为 ' + s.name + '，悬浮球已更新');
           reload();
         });
@@ -92,10 +90,13 @@ function removeStock(i) {
   stocks.splice(i, 1);
   if (i < activeIdx) activeIdx--;
   else if (i === activeIdx) activeIdx = Math.min(activeIdx, stocks.length - 1);
-  saveStocks(stocks, function () {
-    saveActive(Math.max(0, activeIdx));
-    showMsg('ok', '已移除 ' + s.name);
-    reload();
+  saveStocks(stocks, function (err) {
+    if (err) { showMsg('err', '保存失败，请重试'); return; }
+    saveActive(Math.max(0, activeIdx), function (err2) {
+      if (err2) { showMsg('err', '保存失败，请重试'); return; }
+      showMsg('ok', '已移除 ' + s.name);
+      reload();
+    });
   });
 }
 
@@ -112,7 +113,7 @@ function renderList(items) {
     var exists = stocks.some(function (s) {
       return s.market === it.market && String(s.code) === String(it.code);
     });
-    d.innerHTML = '<span class="mk">' + marketLabel(it.market) + '</span>' +
+    d.innerHTML = '<span class="mk">' + esc(marketLabel(it.market)) + '</span>' +
       '<span class="nm">' + esc(it.name) + '</span>' +
       '<span class="cd">' + esc(displayCode(it)) + '</span>' +
       '<span class="tp">' + esc(typeLabel(it.type)) + '</span>' +
@@ -127,8 +128,10 @@ function renderList(items) {
 function addStock(it) {
   stocks.push({ market: it.market, code: it.code, name: it.name });
   var idx = stocks.length - 1;
-  saveStocks(stocks, function () {
-    saveActive(idx, function () {
+  saveStocks(stocks, function (err) {
+    if (err) { showMsg('err', '保存失败，请重试'); return; }
+    saveActive(idx, function (err2) {
+      if (err2) { showMsg('err', '保存失败，请重试'); return; }
       showMsg('ok', '已添加 ' + it.name + '（' + displayCode(it) + '）并设为当前展示');
       kw.value = '';
       list.innerHTML = '';
@@ -136,12 +139,23 @@ function addStock(it) {
     });
   });
 }
-function doSearch() {
+var searchSeq = 0;
+var searchTimer = null;
+function doSearch(force) {
   var q = kw.value.trim();
-  if (!q) return;
+  if (!q) { searchSeq++; list.innerHTML = ''; return; }
+  if (!force) {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function () { doSearch(true); }, 300);
+    return;
+  }
+  var seq = ++searchSeq;
   list.innerHTML = '<div class="emp">搜索中…</div>';
+  btn.disabled = true;
+  btn.textContent = '搜索中…';
   searchStocks(q)
     .then(function (items) {
+      if (seq !== searchSeq) return;
       items.sort(function (a, b) {
         var x = isStockType(a.type) ? 0 : 1, y = isStockType(b.type) ? 0 : 1;
         return x - y;
@@ -149,8 +163,10 @@ function doSearch() {
       renderList(items);
     })
     .catch(function () {
+      if (seq !== searchSeq) return;
       list.innerHTML = '<div class="emp">搜索失败，请检查网络后重试</div>';
-    });
+    })
+    .then(function () { btn.disabled = false; btn.textContent = '搜索'; });
 }
 
 /* ---- 当前展示 ---- */
@@ -181,9 +197,13 @@ function fetchPrice() {
   }).catch(function () { curPx.textContent = '--'; });
 }
 
-btn.addEventListener('click', doSearch);
-kw.addEventListener('keydown', function (e) { if (e.key === 'Enter') doSearch(); });
-kw.addEventListener('input', function () { if (kw.value.trim().length >= 2) doSearch(); });
+kw.maxLength = 30;
+btn.addEventListener('click', function () { clearTimeout(searchTimer); doSearch(true); });
+kw.addEventListener('keydown', function (e) { if (e.key === 'Enter') { clearTimeout(searchTimer); doSearch(true); } });
+kw.addEventListener('input', function () {
+  if (kw.value.trim().length >= 2) doSearch();
+  else { clearTimeout(searchTimer); searchSeq++; list.innerHTML = ''; }
+});
 
 chrome.storage.onChanged.addListener(function (changes, area) {
   if (area !== 'local') return;
@@ -202,6 +222,7 @@ function renderVis() {
 visToggle.addEventListener('change', function () {
   var v = visToggle.checked;
   chrome.storage.local.set({ chhVisible: v }, function () {
+    if (chrome.runtime.lastError) { showMsg('err', '保存失败，请重试'); renderVis(); return; }
     showMsg('ok', v ? '已开启悬浮球，所有页面将重新显示' : '已关闭悬浮球，所有页面将隐藏');
   });
 });
@@ -234,7 +255,14 @@ function renderAlert() {
 function saveAlert(part, cb) {
   chrome.storage.local.get('chhAlert', function (o) {
     var cfg = Object.assign({}, ALERT_DEFAULTS, (o && o.chhAlert) || {}, part);
-    chrome.storage.local.set({ chhAlert: cfg }, cb || function () {});
+    chrome.storage.local.set({ chhAlert: cfg }, function () {
+      if (chrome.runtime.lastError) {
+        console.error('saveAlert failed:', chrome.runtime.lastError.message);
+        showMsg('err', '保存失败，请重试');
+        return;
+      }
+      if (cb) cb();
+    });
   });
 }
 alertToggle.addEventListener('change', function () {
@@ -244,7 +272,7 @@ alertToggle.addEventListener('change', function () {
 });
 alertRatioUp.addEventListener('change', function () {
   var v = parseFloat(alertRatioUp.value);
-  if (!isFinite(v) || v < 1) { showMsg('err', '放量倍率需 ≥ 1'); renderAlert(); return; }
+  if (!isFinite(v) || v < 1 || v > 100) { showMsg('err', '放量倍率需在 1~100 之间'); renderAlert(); return; }
   saveAlert({ ratioUp: v }, function () { showMsg('ok', '放量倍率已更新'); });
 });
 alertRatioDown.addEventListener('change', function () {
@@ -254,17 +282,17 @@ alertRatioDown.addEventListener('change', function () {
 });
 alertPct.addEventListener('change', function () {
   var v = parseFloat(alertPct.value);
-  if (!isFinite(v) || v <= 0) { showMsg('err', '涨跌幅阈值需大于 0'); renderAlert(); return; }
+  if (!isFinite(v) || v <= 0 || v > 50) { showMsg('err', '涨跌幅阈值需在 0~50 之间'); renderAlert(); return; }
   saveAlert({ pct: v }, function () { showMsg('ok', '涨跌幅阈值已更新'); });
 });
 alertCd.addEventListener('change', function () {
   var v = parseFloat(alertCd.value);
-  if (!isFinite(v) || v < 10) { showMsg('err', '冷却时间需 ≥ 10 分钟'); renderAlert(); return; }
+  if (!isFinite(v) || v < 10 || v > 1440 || v !== Math.floor(v)) { showMsg('err', '冷却时间需为 10~1440 的整数分钟'); renderAlert(); return; }
   saveAlert({ cd: v }, function () { showMsg('ok', '冷却时间已更新'); });
 });
 alertFundAmt.addEventListener('change', function () {
   var v = parseFloat(alertFundAmt.value);
-  if (!isFinite(v) || v < 100) { showMsg('err', '主力净流入阈值需 ≥ 100 万元'); renderAlert(); return; }
+  if (!isFinite(v) || v < 100 || v > 1000000) { showMsg('err', '主力净流入阈值需在 100~1000000 万元之间'); renderAlert(); return; }
   saveAlert({ fundAmt: v }, function () { showMsg('ok', '主力净流入阈值已更新'); });
 });
 alertFundPct.addEventListener('change', function () {
@@ -281,9 +309,16 @@ larkToggle.addEventListener('change', function () {
 });
 larkUrl.addEventListener('change', function () {
   var v = larkUrl.value.trim();
-  if (v && v.indexOf('open.feishu.cn/open-apis/bot/v2/hook/') < 0) {
-    showMsg('err', 'Webhook 地址格式不正确，请粘贴飞书群机器人的完整 Webhook 地址');
-    return;
+  if (v) {
+    /* 严格校验：仅允许飞书官方 webhook（https + open.feishu.cn + 指定路径） */
+    var u = null;
+    try { u = new URL(v); } catch (e) { }
+    if (!u || u.protocol !== 'https:' || u.hostname !== 'open.feishu.cn' ||
+        !/^\/open-apis\/bot\/v2\/hook\/[0-9A-Za-z-]{6,}\/?$/.test(u.pathname)) {
+      showMsg('err', 'Webhook 地址无效，仅支持 https://open.feishu.cn/open-apis/bot/v2/hook/... 格式');
+      renderAlert();
+      return;
+    }
   }
   saveAlert({ larkUrl: v }, function () {
     showMsg('ok', v ? '飞书 Webhook 已保存' : '已清空飞书 Webhook');
@@ -296,15 +331,20 @@ larkTest.addEventListener('click', function () {
     if (!cfg.larkUrl) { showMsg('err', '请先填写并保存飞书 Webhook 地址'); return; }
     larkTest.disabled = true;
     larkTest.textContent = '发送中…';
-    chrome.runtime.sendMessage({ type: 'larkTest' }, function (resp) {
+    var done = function (errTxt) {
       larkTest.disabled = false;
       larkTest.textContent = '发送测试消息';
-      if (chrome.runtime.lastError || !resp || !resp.ok) {
-        showMsg('err', '推送失败：' + ((resp && resp.error) || chrome.runtime.lastError || '未知错误'));
-      } else {
-        showMsg('ok', '测试消息已发送，请查看飞书群');
-      }
+      if (errTxt) { showMsg('err', '推送失败：' + errTxt); }
+      else { showMsg('ok', '测试消息已发送，请查看飞书群'); }
+    };
+    var settled = false;
+    var finish = function (errTxt) { if (!settled) { settled = true; done(errTxt); } };
+    chrome.runtime.sendMessage({ type: 'larkTest' }, function (resp) {
+      var err = (chrome.runtime.lastError || (resp && resp.error)) || null;
+      finish(err ? String(err.message || err) : null);
     });
+    /* 超时保护：SW 休眠/响应丢失时恢复按钮，避免永久卡在发送中 */
+    setTimeout(function () { finish('请求超时，请重试'); }, 10000);
   });
 });
 
@@ -324,7 +364,14 @@ function renderQuantCfg() {
 function saveQuant(part, cb) {
   chrome.storage.local.get('chhQuant', function (o) {
     var cfg = Object.assign({}, QUANT_DEFAULTS, (o && o.chhQuant) || {}, part);
-    chrome.storage.local.set({ chhQuant: cfg }, cb || function () {});
+    chrome.storage.local.set({ chhQuant: cfg }, function () {
+      if (chrome.runtime.lastError) {
+        console.error('saveQuant failed:', chrome.runtime.lastError.message);
+        showMsg('err', '保存失败，请重试');
+        return;
+      }
+      if (cb) cb();
+    });
   });
 }
 quantToggle.addEventListener('change', function () {
@@ -428,7 +475,7 @@ function renderHoldings() {
     var d = document.createElement('div');
     d.className = 'mrow';
     d.innerHTML =
-      '<span class="mk">' + marketLabel(h.market) + '</span>' +
+      '<span class="mk">' + esc(marketLabel(h.market)) + '</span>' +
       '<span class="nm">' + esc(h.name) + '</span>' +
       '<span class="cd">' + esc(displayCode(h)) + ' · ' + fmtNum(h.qty, 0) + '股</span>' +
       '<span class="hpl ' + plCls(q.pl) + '">' + fmtMoney(q.pl) + '</span>' +
@@ -450,18 +497,19 @@ function renderHoldEdit(row, i) {
   row.classList.add('edit');
   row.innerHTML =
     '<span class="nm">' + esc(h.name) + '</span>' +
-    '<label>数量（股）<input class="eq" type="number" min="1" step="100" value="' + h.qty + '"></label>' +
-    '<label>成本价<input class="ec" type="number" min="0" step="0.001" value="' + h.cost + '"></label>' +
+    '<label>数量（股）<input class="eq" type="number" min="1" step="100" value="' + esc(h.qty) + '"></label>' +
+    '<label>成本价<input class="ec" type="number" min="0" step="0.001" value="' + esc(h.cost) + '"></label>' +
     '<span class="ops"><button class="ok">保存</button><button class="cx">取消</button></span>';
   var eq = row.querySelector('.eq');
   var ec = row.querySelector('.ec');
   row.querySelector('.ok').addEventListener('click', function () {
     var q = parseFloat(eq.value), c = parseFloat(ec.value);
-    if (!isFinite(q) || q <= 0) { showHMsg('err', '数量需大于 0'); return; }
+    if (!isFinite(q) || q <= 0 || Math.floor(q) !== q) { showHMsg('err', '数量需为大于 0 的整数股数'); return; }
     if (!isFinite(c) || c < 0) { showHMsg('err', '成本价需 ≥ 0'); return; }
-    h.qty = Math.round(q);
+    h.qty = q;
     h.cost = c;
-    saveHoldings(holdings, function () {
+    saveHoldings(holdings, function (err) {
+      if (err) { showHMsg('err', '保存失败，请重试'); return; }
       showHMsg('ok', '已更新 ' + h.name + ' 持仓');
       fetchHoldQuotes();
     });
@@ -472,7 +520,8 @@ function renderHoldEdit(row, i) {
 function removeHold(i) {
   var h = holdings[i];
   holdings.splice(i, 1);
-  saveHoldings(holdings, function () {
+  saveHoldings(holdings, function (err) {
+    if (err) { showHMsg('err', '保存失败，请重试'); return; }
     showHMsg('ok', '已删除 ' + h.name + ' 持仓');
     delete holdQuotes[hkey(h)];
     fetchHoldQuotes();
@@ -509,12 +558,23 @@ function renderHoldSum(sum) {
   hDayEl.className = plCls(sum.dayPl);
 }
 
-function doHSearch() {
+var hSearchSeq = 0;
+var hSearchTimer = null;
+function doHSearch(force) {
   var q = hkw.value.trim();
-  if (!q) return;
+  if (!q) { hSearchSeq++; hlist.innerHTML = ''; return; }
+  if (!force) {
+    clearTimeout(hSearchTimer);
+    hSearchTimer = setTimeout(function () { doHSearch(true); }, 300);
+    return;
+  }
+  var seq = ++hSearchSeq;
   hlist.innerHTML = '<div class="emp">搜索中…</div>';
+  hbtn.disabled = true;
+  hbtn.textContent = '搜索中…';
   searchStocks(q)
     .then(function (items) {
+      if (seq !== hSearchSeq) return;
       items.sort(function (a, b) {
         var x = isStockType(a.type) ? 0 : 1, y = isStockType(b.type) ? 0 : 1;
         return x - y;
@@ -522,8 +582,10 @@ function doHSearch() {
       renderHList(items);
     })
     .catch(function () {
+      if (seq !== hSearchSeq) return;
       hlist.innerHTML = '<div class="emp">搜索失败，请检查网络后重试</div>';
-    });
+    })
+    .then(function () { hbtn.disabled = false; hbtn.textContent = '搜索'; });
 }
 function renderHList(items) {
   hlist.innerHTML = '';
@@ -537,7 +599,7 @@ function renderHList(items) {
     var exists = holdings.some(function (s) {
       return s.market === it.market && String(s.code) === String(it.code);
     });
-    d.innerHTML = '<span class="mk">' + marketLabel(it.market) + '</span>' +
+    d.innerHTML = '<span class="mk">' + esc(marketLabel(it.market)) + '</span>' +
       '<span class="nm">' + esc(it.name) + '</span>' +
       '<span class="cd">' + esc(displayCode(it)) + '</span>' +
       '<span class="tp">' + esc(typeLabel(it.type)) + '</span>' +
@@ -556,19 +618,24 @@ function pickHold(it) {
   qtyrow.style.display = 'flex';
   hqty.focus();
 }
-hbtn.addEventListener('click', doHSearch);
-hkw.addEventListener('keydown', function (e) { if (e.key === 'Enter') doHSearch(); });
-hkw.addEventListener('input', function () { if (hkw.value.trim().length >= 2) doHSearch(); });
+hkw.maxLength = 30;
+hbtn.addEventListener('click', function () { clearTimeout(hSearchTimer); doHSearch(true); });
+hkw.addEventListener('keydown', function (e) { if (e.key === 'Enter') { clearTimeout(hSearchTimer); doHSearch(true); } });
+hkw.addEventListener('input', function () {
+  if (hkw.value.trim().length >= 2) doHSearch();
+  else { clearTimeout(hSearchTimer); hSearchSeq++; hlist.innerHTML = ''; }
+});
 hadd.addEventListener('click', function () {
   if (!pendingHold) { showHMsg('err', '请先搜索并选择一只股票'); return; }
   var q = parseFloat(hqty.value), c = parseFloat(hcostEl.value);
-  if (!isFinite(q) || q <= 0) { showHMsg('err', '请填写数量（股），需大于 0'); return; }
+  if (!isFinite(q) || q <= 0 || Math.floor(q) !== q) { showHMsg('err', '请填写数量（股），需为大于 0 的整数'); return; }
   if (!isFinite(c) || c < 0) { showHMsg('err', '请填写成本价（每股），需 ≥ 0'); return; }
   holdings.push({
     market: pendingHold.market, code: pendingHold.code, name: pendingHold.name,
-    qty: Math.round(q), cost: c
+    qty: q, cost: c
   });
-  saveHoldings(holdings, function () {
+  saveHoldings(holdings, function (err) {
+    if (err) { showHMsg('err', '保存失败，请重试'); return; }
     showHMsg('ok', '已添加 ' + pendingHold.name + ' 持仓');
     pendingHold = null;
     qtyrow.style.display = 'none';
