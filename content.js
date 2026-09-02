@@ -551,6 +551,7 @@ function applyActive(i) {
   cfg = stocks.length ? stocks[i] : null;
   renderIdent();
   renderSwitcher();
+  renderQuantLoading();
   refresh();
   requestChart('intra');
 }
@@ -1054,6 +1055,18 @@ function requestQuant(force) {
   } catch (e) { }
 }
 var Q_LABELS = { trend: '趋势', fund: '资金', vol: '量价', news: '情绪', value: '估值' };
+function renderQuantLoading() {
+  qDir.className = 'dir flat';
+  qDir.textContent = '加载中';
+  qTag.className = 'tg neu';
+  qTag.textContent = '…';
+  qSub.textContent = '正在计算量化评分…';
+  qScore.textContent = '--';
+  qLevel.textContent = '--';
+  qBars.innerHTML = '';
+  qSignals.innerHTML = '';
+  qRow.textContent = '五因子加权合成，权重可在设置页调整；仅供技术参考，不构成投资建议';
+}
 function renderQuant(q) {
   if (!q) {
     qDir.className = 'dir flat';

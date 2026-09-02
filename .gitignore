@@ -1,0 +1,6 @@
+# 系统生成的 HTML 分享包
+.trae-html-share-packages/
+
+# 量化分析报告（含盘中快照数据与大体积静态资源，不入库）
+quant-report/
+chuanyang-quant/
