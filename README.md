@@ -22,9 +22,10 @@ A Manifest V3 browser extension that shows a draggable global floating ball over
 - **多股票支持**：A股（沪深北）/ 港股 / 美股 / 场内 ETF·LOF / 上金所现货（黄金9999 等），行情卡顶部标签栏一键切换；完全无预设股票，全部由你自行搜索添加
 - **行情详情卡**：点击悬浮球展开，展示今开 / 昨收 / 最高 / 最低 / 成交量 / 成交额 / 换手率 / 振幅 / 市盈率 / 市净率 / 总市值 / 流通市值 / 涨停 / 跌停，以及实时迷你走势
 - **双模式预测参考**：基于近 80 个交易日历史统计（均线 MA5/10/20、RSI14、波动率、上涨天数占比）给出方向、次日预测区间与上涨概率；支持「次日」模式（日K统计 + 回测校准）与「实时」模式（分时K线 + 盘中量价），并跨会话追踪预测命中率
-- **主力资金流与龙虎榜信号**（仅A股）：主力净流入/流出、5 日累计、连续流入/流出天数、强度等级；龙虎榜近 5 条上榜记录（买卖金额、上榜原因）
+- **主力资金流与龙虎榜信号**（仅A股）：主力净流入/流出（盘中实时更新，约每 60 秒刷新）、5 日累计、连续流入/流出天数、强度等级；龙虎榜近 5 条上榜记录（买卖金额、上榜原因）
 - **个股资讯参考**：多源聚合 —— 东方财富个股新闻检索（财联社/证券时报/中国证券报等）+ 新浪财经7x24快讯 + 雪球/微博/百度热榜，按股票名称/代码匹配并做积极/消极情绪分析
-- **异动提醒**：交易时段每分钟自动检测自选股量价异动（放量上涨 / 放量下跌 / 缩量上涨 / 缩量下跌），命中即发送浏览器通知并附次日预测区间与上涨概率；同股同信号默认 2 小时冷却去重。支持**同步推送飞书群机器人**：配置 Webhook 后以红涨绿跌的可视化卡片展示信号、现价/涨跌幅/量比/上涨概率与次日预测区间。信号阈值、冷却时间、飞书推送均可在设置页调整
+- **盘口与关联行情**：行情卡内可展开「盘口」——买一~买五 / 卖一~卖五五档挂单（红卖绿买）、大盘指数（A股三大指数 / 恒生 / 美股三大指数）、所属行业与概念板块实时涨跌（A股），盘中约每 60 秒刷新
+- **异动提醒**：交易时段每分钟自动检测自选股量价异动（放量上涨 / 放量下跌 / 缩量上涨 / 缩量下跌），命中即发送浏览器通知并附次日预测区间与上涨概率；同股同信号默认 2 小时冷却去重。**主力资金异动监控**（仅A股）：主力净流入/流出金额与占比同时达到阈值时推送「主力大幅流入 / 主力大幅流出」。支持**同步推送飞书群机器人**：配置 Webhook 后以红涨绿跌的可视化卡片展示信号与详情。信号阈值、冷却时间、飞书推送均可在设置页调整
 - **配置实时同步**：配置修改后所有已打开网页即时生效
 - **低权限**：仅申请 `storage`（数据）、`notifications`（异动提醒）、`alarms`（定时检测）
 
@@ -113,9 +114,10 @@ Quotes come from Tencent (primary), with automatic fallback to Eastmoney (backup
 - **Multi-stock watchlist**: A-shares (Shanghai / Shenzhen / Beijing), HK stocks, US stocks, exchange-traded ETFs/LOFs, and SGE spot gold (e.g. AU9999 gold). Switch between them via the tab bar on the quote card — zero preset stocks, you configure everything
 - **Detail quote card**: click the ball to expand — open / prev close / high / low / volume / turnover / turnover rate / amplitude / P/E / P/B / total market cap / float market cap / limit-up / limit-down prices, plus a real-time mini chart
 - **Dual-mode prediction reference**: based on statistics over the last 80 trading days (MA5/10/20, RSI14, volatility, ratio of up days) it estimates direction, a next-day prediction range, and the probability of an up move. Two modes: **Next-day** (daily-K stats + backtest calibration) and **Real-time** (intraday tick K-line + volume-price). Prediction hit rate is tracked across sessions
-- **Main capital flow & Dragon-Tiger List signals** (A-shares only): main net inflow/outflow, 5-day cumulative flow, consecutive inflow/outflow streak, and strength level; up to 5 recent Dragon-Tiger List appearances (buy/sell amounts and reasons)
+- **Main capital flow & Dragon-Tiger List signals** (A-shares only): main net inflow/outflow (real-time during trading hours, refreshed ~every 60s), 5-day cumulative flow, consecutive inflow/outflow streak, and strength level; up to 5 recent Dragon-Tiger List appearances (buy/sell amounts and reasons)
 - **Stock news reference**: multi-source aggregation — Eastmoney per-stock news search (Cailianshe / Securities Times / China Securities Journal, etc.) + Sina Finance 7x24 flash news + Xueqiu/Weibo/Baidu hot lists, matched by stock name/code with positive/negative sentiment scoring
-- **Anomaly alerts**: during trading hours, the extension checks your watchlist every minute for volume-price anomalies (volume surge up / volume surge down / volume shrink up / volume shrink down) and pushes a browser notification with the next-day prediction range and up probability; the same signal is suppressed for 2 hours by default. Supports **push to a Feishu (Lark) group bot via Webhook** — a red-up/green-down visual card with the signal, price/change %, volume ratio, up probability, and next-day range. Thresholds, cooldown, and Feishu push are all configurable in the settings page
+- **Order book & related quotes**: expand the "Order Book" section in the quote card — level-1~5 bid/ask quotes (red asks / green bids), major indices (CSI/SZSE/ChiNext for A-shares, Hang Seng for HK, Dow/Nasdaq/S&P 500 for US), and the stock's industry/concept board changes (A-shares), refreshing roughly every 60s during trading hours
+- **Anomaly alerts**: during trading hours, the extension checks your watchlist every minute for volume-price anomalies (volume surge up / volume surge down / volume shrink up / volume shrink down) and pushes a browser notification with the next-day prediction range and up probability; the same signal is suppressed for 2 hours by default. **Main-capital anomaly monitoring** (A-shares only): pushes "main capital surge in / out" when net inflow/outflow amount AND ratio both pass the threshold. Supports **push to a Feishu (Lark) group bot via Webhook** — a red-up/green-down visual card with the signal and details. Thresholds, cooldown, and Feishu push are all configurable in the settings page
 - **Live config sync**: changes apply instantly to every already-open page
 - **Minimal permissions**: only `storage` (data), `notifications` (anomaly alerts), and `alarms` (scheduled checks)
 

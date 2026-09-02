@@ -23,8 +23,10 @@ var larkToggle = document.getElementById('larkToggle');
 var larkSub = document.getElementById('larkSub');
 var larkUrl = document.getElementById('larkUrl');
 var larkTest = document.getElementById('larkTest');
+var alertFundAmt = document.getElementById('alertFundAmt');
+var alertFundPct = document.getElementById('alertFundPct');
 
-var ALERT_DEFAULTS = { on: true, ratioUp: 1.8, ratioDown: 0.5, pct: 3, cd: 120, larkOn: false, larkUrl: '' };
+var ALERT_DEFAULTS = { on: true, ratioUp: 1.8, ratioDown: 0.5, pct: 3, cd: 120, larkOn: false, larkUrl: '', fundOn: true, fundAmt: 5000, fundPct: 5 };
 
 var stocks = [];
 var activeIdx = 0;
@@ -206,6 +208,8 @@ function renderAlert() {
     alertRatioDown.value = cfg.ratioDown;
     alertPct.value = cfg.pct;
     alertCd.value = cfg.cd;
+    alertFundAmt.value = cfg.fundAmt;
+    alertFundPct.value = cfg.fundPct;
     larkToggle.checked = !!cfg.larkOn;
     larkUrl.value = cfg.larkUrl || '';
     larkSub.textContent = (cfg.larkOn && cfg.larkUrl)
@@ -249,6 +253,16 @@ alertCd.addEventListener('change', function () {
   var v = parseFloat(alertCd.value);
   if (!isFinite(v) || v < 10) { showMsg('err', '冷却时间需 ≥ 10 分钟'); renderAlert(); return; }
   saveAlert({ cd: v }, function () { showMsg('ok', '冷却时间已更新'); });
+});
+alertFundAmt.addEventListener('change', function () {
+  var v = parseFloat(alertFundAmt.value);
+  if (!isFinite(v) || v < 100) { showMsg('err', '主力净流入阈值需 ≥ 100 万元'); renderAlert(); return; }
+  saveAlert({ fundAmt: v }, function () { showMsg('ok', '主力净流入阈值已更新'); });
+});
+alertFundPct.addEventListener('change', function () {
+  var v = parseFloat(alertFundPct.value);
+  if (!isFinite(v) || v < 1 || v > 50) { showMsg('err', '主力占比阈值需在 1~50 之间'); renderAlert(); return; }
+  saveAlert({ fundPct: v }, function () { showMsg('ok', '主力占比阈值已更新'); });
 });
 
 /* ---- 飞书推送配置 ---- */

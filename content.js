@@ -125,6 +125,52 @@ var CSS = `
 .card .luro{display:flex;align-items:center;justify-content:space-between;padding:6px 18px 0;font-size:10.5px;color:${THEME.ink3}}
 .card .luro b{font-family:'DIN Alternate','Bahnschrift Condensed',sans-serif;color:${THEME.ink2};font-weight:600;margin-left:4px;font-variant-numeric:tabular-nums}
 .prd{margin:8px 16px 0;border:1px solid ${THEME.line};border-radius:10px;background:#f8fafc}
+.bk{margin:8px 16px 0;border:1px solid ${THEME.line};border-radius:10px;background:#f8fafc}
+.bk .bar{display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;user-select:none}
+.bk .bar .t{font-size:12px;font-weight:700;letter-spacing:.08em;color:${THEME.ink}}
+.bk .bar .sum{flex:1;font-size:10.5px;color:${THEME.ink3};text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bk .bar .chev{font-size:10px;color:${THEME.ink3};transition:transform .2s}
+.bk.open .bar .chev{transform:rotate(180deg)}
+.bk .body{display:none;padding:2px 12px 12px}
+.bk.open .body{display:block}
+.bk5{display:grid;grid-template-columns:1fr 52px 1fr;gap:2px 8px;align-items:center}
+.bk5 .bcol{display:flex;flex-direction:column;gap:2px}
+.bk5 .brow{display:flex;align-items:center;gap:6px;padding:3.5px 8px;border-radius:6px;font-size:11.5px;border:1px solid transparent}
+.bk5 .brow .lab{width:22px;font-size:9.5px;letter-spacing:.04em;flex-shrink:0;font-weight:600}
+.bk5 .brow .bp{flex:1;font-family:'DIN Alternate','Bahnschrift Condensed',sans-serif;font-weight:700;font-variant-numeric:tabular-nums}
+.bk5 .brow .bv{font-family:'DIN Alternate','Bahnschrift Condensed',sans-serif;font-size:10.5px;font-variant-numeric:tabular-nums}
+/* 卖盘红系 / 买盘绿系：首档最深，逐档变淡（五档深度渐变） */
+.bk5 .ask .brow{background:rgba(229,72,77,.06);border-color:rgba(229,72,77,.10)}
+.bk5 .ask .brow .lab{color:rgba(229,72,77,.72)}
+.bk5 .ask .brow .bp{color:#d63a3f}
+.bk5 .ask .brow.lv1{background:rgba(229,72,77,.17);border-color:rgba(229,72,77,.30)}
+.bk5 .ask .brow.lv1 .lab{color:#c22a2f}
+.bk5 .ask .brow.lv1 .bp{color:#c22a2f}
+.bk5 .ask .brow.lv2{background:rgba(229,72,77,.13)}
+.bk5 .ask .brow.lv3{background:rgba(229,72,77,.10)}
+.bk5 .ask .brow.lv4{background:rgba(229,72,77,.08)}
+.bk5 .ask .brow.lv5{background:rgba(229,72,77,.06)}
+.bk5 .bid .brow{background:rgba(16,163,127,.06);border-color:rgba(16,163,127,.10)}
+.bk5 .bid .brow .lab{color:rgba(16,163,127,.72)}
+.bk5 .bid .brow .bp{color:#0d9775}
+.bk5 .bid .brow.lv1{background:rgba(16,163,127,.17);border-color:rgba(16,163,127,.30)}
+.bk5 .bid .brow.lv1 .lab{color:#0b805f}
+.bk5 .bid .brow.lv1 .bp{color:#0b805f}
+.bk5 .bid .brow.lv2{background:rgba(16,163,127,.13)}
+.bk5 .bid .brow.lv3{background:rgba(16,163,127,.10)}
+.bk5 .bid .brow.lv4{background:rgba(16,163,127,.08)}
+.bk5 .bid .brow.lv5{background:rgba(16,163,127,.06)}
+.bk5 .brow .bv{color:${THEME.ink2}}
+.bk5 .mid{text-align:center;font-family:'DIN Alternate','Bahnschrift Condensed',sans-serif;font-size:15px;font-weight:700;color:#fff;border-radius:8px;padding:7px 0;background:${THEME.ink3};box-shadow:0 1px 3px rgba(15,23,42,.15);font-variant-numeric:tabular-nums}
+.bk5 .mid.up{background:${THEME.up}}
+.bk5 .mid.down{background:${THEME.down}}
+.bkrel{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.bkchip{display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid ${THEME.lineSoft};border-radius:99px;padding:3px 9px;font-size:11px}
+.bkchip .n{color:${THEME.ink2}}
+.bkchip .v{font-family:'DIN Alternate','Bahnschrift Condensed',sans-serif;font-weight:600;font-variant-numeric:tabular-nums}
+.bkchip .v.up{color:${THEME.up}}
+.bkchip .v.down{color:${THEME.down}}
+.bkchip .v.flat{color:${THEME.ink3}}
 .prd .bar{display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;font-size:10.5px;color:${THEME.ink2}}
 .prd .bar .t{color:${THEME.blue};font-weight:600;letter-spacing:.06em}
 .prd .bar .sum{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${THEME.ink3};font-size:10px}
@@ -279,6 +325,17 @@ root.innerHTML += `
       <div class="note">基于历史统计与公开资讯的简易参考，不构成投资建议</div>
     </div>
   </div>
+  <div class="bk" id="bk">
+    <div class="bar" id="bkBar"><span class="t">盘口</span><span class="sum" id="bkSum">--</span><span class="chev">▾</span></div>
+    <div class="body">
+      <div class="bk5" id="bk5">
+        <div class="bcol ask" id="bkAsk"></div>
+        <div class="mid" id="bkMid">--</div>
+        <div class="bcol bid" id="bkBid"></div>
+      </div>
+      <div class="bkrel" id="bkRel"></div>
+    </div>
+  </div>
   <div class="srcRow" id="srcRow" style="display:none"></div>
   <div class="ft">
     <button id="btnPause">暂停</button>
@@ -317,6 +374,15 @@ var btnHide = root.getElementById('btnHide');
 var prd = root.getElementById('prd');
 var prdBar = root.getElementById('prdBar');
 var prdSum = root.getElementById('prdSum');
+var bk = root.getElementById('bk');
+var bkBar = root.getElementById('bkBar');
+var bkSum = root.getElementById('bkSum');
+var bk5 = root.getElementById('bk5');
+var bkAsk = root.getElementById('bkAsk');
+var bkBid = root.getElementById('bkBid');
+var bkMid = root.getElementById('bkMid');
+var bkRel = root.getElementById('bkRel');
+var boardAt = 0;
 var ptabs = root.getElementById('ptabs');
 var idDir = root.getElementById('idDir');
 var idIdx = root.getElementById('idIdx');
@@ -399,6 +465,11 @@ function renderIdent() {
     prdDay = null; prdIntra = null; prdNews = null; prdFlow = null;
     predictDayAt = 0; predictIntradayAt = 0; newsAt = 0; flowAt = 0;
     prdSum.textContent = '--';
+    boardAt = 0;
+    bkAsk.innerHTML = ''; bkBid.innerHTML = '';
+    bkMid.textContent = '--';
+    bkRel.innerHTML = '';
+    bkSum.textContent = '--';
     resetGrid();
     return;
   }
@@ -412,6 +483,11 @@ function renderIdent() {
   prdDay = null; prdIntra = null; prdNews = null; prdFlow = null;
   predictDayAt = 0; predictIntradayAt = 0; newsAt = 0; flowAt = 0;
   prdSum.textContent = '--';
+  boardAt = 0;
+  bkAsk.innerHTML = ''; bkBid.innerHTML = '';
+  bkMid.textContent = '--';
+  bkRel.innerHTML = '';
+  bkSum.textContent = '--';
 }
 function resetGrid() {
   var cells = gridEl.querySelectorAll('.cell');
@@ -576,6 +652,7 @@ function apply(d) {
   state.turnover = d.turnover; state.pe = d.pe; state.pb = d.pb;
   state.totalCap = d.totalCap; state.floatCap = d.floatCap;
   state.lu = d.lu; state.ld = d.ld; state.change = d.change; state.pct = d.pct; state.t = d.t;
+  state.bid5 = d.bid5 || []; state.ask5 = d.ask5 || [];
 
   setDir(d.pct > 0 ? 'up' : (d.pct < 0 ? 'down' : 'flat'));
 
@@ -713,7 +790,7 @@ function refresh() {
   requestQuote()
     .then(function (d) { apply(d); })
     .catch(function () { setSource('off'); })
-    .then(scheduleNext);
+    .then(function () { requestBoard(false); scheduleNext(); });
 }
 function scheduleNext() {
   if (timer) { clearInterval(timer); timer = null; }
@@ -740,7 +817,7 @@ function refreshPredict(force) {
   if (force || !predictDayAt || now - predictDayAt > 5 * 60 * 1000) requestPredictDay();
   if (force || !predictIntradayAt || now - predictIntradayAt > 60 * 1000) requestPredictIntraday();
   if (force || !newsAt || now - newsAt > 10 * 60 * 1000) requestNews();
-  if (force || !flowAt || now - flowAt > 5 * 60 * 1000) requestFlow();
+  if (force || !flowAt || now - flowAt > 60 * 1000) requestFlow();
 }
 function requestPredictDay() {
   try {
@@ -958,9 +1035,69 @@ function renderSum() {
   if (prdNews && prdNews.total) parts.push('资讯' + prdNews.total + '条');
   prdSum.textContent = parts.length ? parts.join(' · ') : '--';
 }
+
+/* ================= 盘口：五档 + 大盘指数 + 相关板块 ================= */
+function requestBoard(force) {
+  if (paused || !visible || !cfg) return;
+  var now = Date.now();
+  if (!force && boardAt && now - boardAt < 60 * 1000) return;
+  boardAt = now;
+  try {
+    if (!chrome.runtime || !chrome.runtime.sendMessage) return;
+    chrome.runtime.sendMessage({ type: 'board', cfg: cfg }, function (resp) {
+      if (chrome.runtime.lastError || !resp || !resp.ok) return;
+      renderBoard(resp);
+    });
+  } catch (e) { }
+}
+function renderBoard(resp) {
+  var q = state;
+  /* 五档盘口 */
+  var asks = q.ask5 || [], bids = q.bid5 || [];
+  if (asks.length && bids.length) {
+    var ah = '', bh = '';
+    for (var i = 4; i >= 0; i--) {
+      ah += '<div class="brow lv' + (5 - i) + '"><span class="lab">卖' + (i + 1) + '</span>' +
+        '<span class="bp">' + fmt2(asks[i].p) + '</span><span class="bv">' + fmtVol(asks[i].v) + '</span></div>';
+    }
+    for (var j = 0; j < 5; j++) {
+      bh += '<div class="brow lv' + (j + 1) + '"><span class="lab">买' + (j + 1) + '</span>' +
+        '<span class="bp">' + fmt2(bids[j].p) + '</span><span class="bv">' + fmtVol(bids[j].v) + '</span></div>';
+    }
+    bkAsk.innerHTML = ah;
+    bkBid.innerHTML = bh;
+    bkMid.textContent = fmt2(q.price);
+    bkMid.className = 'mid ' + (q.pct > 0 ? 'up' : (q.pct < 0 ? 'down' : ''));
+    bk5.style.display = '';
+  } else {
+    bk5.style.display = 'none';
+  }
+  /* 关联行情：大盘指数 + 相关板块 */
+  var indices = resp.indices || [], boards = resp.boards || [];
+  var html = '';
+  indices.forEach(function (it) {
+    html += chip(it.name, it.pct);
+  });
+  boards.forEach(function (it) {
+    html += chip(it.name, it.pct);
+  });
+  bkRel.innerHTML = html || '<div class="nemp" style="padding:8px 0;text-align:center;font-size:11px;color:' + THEME.ink3 + '">暂无关联行情</div>';
+  bkSum.textContent = (indices.length + boards.length)
+    ? ('指数 ' + indices.length + ' · 板块 ' + boards.length)
+    : '暂无';
+}
+function chip(name, pct) {
+  var cls = pct > 0 ? 'up' : (pct < 0 ? 'down' : 'flat');
+  var txt = (pct == null || isNaN(pct)) ? '--' : ((pct > 0 ? '+' : '') + fmt2(pct) + '%');
+  return '<div class="bkchip"><span class="n">' + esc(name) + '</span><span class="v ' + cls + '">' + txt + '</span></div>';
+}
 prdBar.addEventListener('click', function () {
   prd.classList.toggle('open');
   if (prd.classList.contains('open')) refreshPredict(true);
+});
+bkBar.addEventListener('click', function () {
+  bk.classList.toggle('open');
+  if (bk.classList.contains('open')) requestBoard(true);
 });
 ptabs.addEventListener('click', function (e) {
   var tab = e.target && e.target.getAttribute ? e.target.getAttribute('data-tab') : null;
@@ -1061,7 +1198,12 @@ ball.addEventListener('pointercancel', endDrag);
 /* ================= 卡片 ================= */
 function toggleCard() {
   var open = card.classList.toggle('open');
-  if (open) { placeCard(); refreshPredict(true); }
+  if (open) {
+    placeCard();
+    /* 默认展开「智能预测」并加载数据 */
+    if (!prd.classList.contains('open')) prd.classList.add('open');
+    refreshPredict(true);
+  }
 }
 function placeCard() {
   var r = ball.getBoundingClientRect();

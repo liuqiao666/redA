@@ -131,6 +131,11 @@ body{font-family:'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',sans-serif;c
       <label>冷却时间（分钟）<input type="number" id="alertCd" step="10" min="10"></label>
     </div>
     <div class="tip">交易时段每分钟自动检测自选股，出现「放量上涨 / 放量下跌 / 缩量上涨 / 缩量下跌」时发送浏览器通知并附次日预测（上金所现货无成交量数据，不参与检测）。需在浏览器的站点设置中允许本扩展发送通知。</div>
+    <div class="alrow" style="margin-top:12px">
+      <label>主力净流入阈值（万元）<input type="number" id="alertFundAmt" step="500" min="100"></label>
+      <label>主力占比阈值（%）<input type="number" id="alertFundPct" step="1" min="1" max="50"></label>
+    </div>
+    <div class="tip">盘中每分钟监控自选股主力资金（仅A股，跟随异动提醒总开关）：主力净流入/流出金额与占比同时达到阈值时，推送「主力大幅流入 / 主力大幅流出」提醒（浏览器通知 + 飞书卡片，冷却时间与上方一致）。</div>
 
     <div class="larkbox">
       <div class="visrow">
